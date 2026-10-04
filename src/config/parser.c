@@ -55,7 +55,6 @@ static bool get_double(toml_table_t *tbl, const char *key, double *v)
     toml_datum_t d = toml_double_in(tbl, key);
     if (!d.ok) return false;
     *v = d.u.d;
-    free(d.u.s);
     return true;
 }
 
