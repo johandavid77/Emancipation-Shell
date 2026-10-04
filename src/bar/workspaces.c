@@ -206,8 +206,26 @@ static void workspace_manager_finished(void *data,
     log_info("ext_workspace_manager_v1 finished");
 }
 
+static void workspace_manager_workspace(void *data,
+                                       struct ext_workspace_manager_v1 *manager,
+                                       struct ext_workspace_handle_v1 *workspace)
+{
+    (void)data;
+    (void)manager;
+    (void)workspace;
+}
+
+static void workspace_manager_done(void *data,
+                                  struct ext_workspace_manager_v1 *manager)
+{
+    (void)data;
+    (void)manager;
+}
+
 static const struct ext_workspace_manager_v1_listener workspace_manager_listener = {
     .workspace_group = workspace_manager_workspace_group,
+    .workspace = workspace_manager_workspace,
+    .done = workspace_manager_done,
     .finished = workspace_manager_finished,
 };
 
@@ -245,9 +263,6 @@ void workspaces_destroy(struct workspace_manager *wm)
         if (wg->handle) ext_workspace_group_handle_v1_destroy(wg->handle);
         free(wg);
     }
-    if (wm->mgr) {
-        ext_workspace_manager_v1_destroy(wm->mgr);
-        wm->mgr = NULL;
-    }
+    wm->mgr = NULL;
     free(wm);
 }
