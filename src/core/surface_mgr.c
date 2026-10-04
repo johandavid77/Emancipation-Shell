@@ -1,3 +1,4 @@
+#define _GNU_SOURCE
 #include "core/surface_mgr.h"
 #include "core/wayland.h"
 #include "core/output.h"
@@ -5,8 +6,74 @@
 #include "zwlr-layer-shell-v1-client-protocol.h"
 #include <stdlib.h>
 #include <string.h>
+#include <fcntl.h>
+#include <unistd.h>
+#include <sys/mman.h>
+#include <errno.h>
 
 #define BAR_HEIGHT 32
+#define BAR_BG 0xFF1F1F1F /* ARGB: gris oscuro */
+
+struct shm_buffer {
+    struct wl_buffer *buf;
+    void *data;
+    size_t size;
+    int fd;
+    int width;
+    int height;
+    int stride;
+};
+static void shm_buffer_destroy(struct shm_buffer *sb)
+{
+    if (!sb) return;
+    if (sb->buf) wl_buffer_destroy(sb->buf);
+    if (sb->data && sb->data != MAP_FAILED) munmap(sb->data, sb->size);
+    if (sb->fd >= 0) close(sb->fd);
+    memset(sb, 0, sizeof(*sb));
+    sb->fd = -1;
+}
+
+static int shm_buffer_create(struct wl_shm *shm, struct shm_buffer *sb, int w, int h)
+{
+    if (!shm || !sb || w <= 0 || h <= 0) return -1;
+    memset(sb, 0, sizeof(*sb));
+    sb->fd = -1;
+    sb->width = w;
+    sb->height = h;
+    sb->stride = w * 4;
+    sb->size = sb->stride * h;
+    char name[] = "/emancipation-shm-XXXXXX";
+    sb->fd = mkstemp(name);
+    if (sb->fd < 0) return -1;
+    unlink(name);
+    if (ftruncate(sb->fd, sb->size) < 0) {
+        close(sb->fd);
+        sb->fd = -1;
+        return -1;
+    }
+    sb->data = mmap(NULL, sb->size, PROT_READ | PROT_WRITE, MAP_SHARED, sb->fd, 0);
+    if (sb->data == MAP_FAILED) {
+        sb->data = NULL;
+        close(sb->fd);
+        sb->fd = -1;
+        return -1;
+    }
+    uint32_t *p = (uint32_t *)sb->data;
+    for (int i = 0; i < w * h; i++) {
+        p[i] = BAR_BG;
+    }
+    struct wl_shm_pool *pool = wl_shm_create_pool(shm, sb->fd, sb->size);
+    if (!pool) {
+        munmap(sb->data, sb->size);
+        sb->data = NULL;
+        close(sb->fd);
+        sb->fd = -1;
+        return -1;
+    }
+    sb->buf = wl_shm_pool_create_buffer(pool, 0, w, h, sb->stride, WL_SHM_FORMAT_ARGB8888);
+    wl_shm_pool_destroy(pool);
+    return sb->buf ? 0 : -1;
+}
 
 static void layer_surface_configure(void *data,
                                    struct zwlr_layer_surface_v1 *ls,
@@ -21,6 +88,21 @@ static void layer_surface_configure(void *data,
         zwlr_layer_surface_v1_ack_configure(ls, serial);
         lsurf->configured_w = width;
         lsurf->configured_h = height;
+        if (!lsurf->surf) return;
+        int w = (width > 0) ? (int)width : ((lsurf->out && lsurf->out->w > 0) ? lsurf->out->w : 0);
+        int h = (height > 0) ? (int)height : BAR_HEIGHT;
+        if (w <= 0) w = 0;
+        if (h <= 0) h = BAR_HEIGHT;
+        struct shm_buffer sb = {0};
+        sb.fd = -1;
+        if (lsurf->ctx && lsurf->ctx->shm && w > 0 && h > 0) {
+            if (shm_buffer_create(lsurf->ctx->shm, &sb, w, h) == 0 && sb.buf) {
+                wl_surface_attach(lsurf->surf, sb.buf, 0, 0);
+                wl_surface_damage_buffer(lsurf->surf, 0, 0, w, h);
+                wl_surface_commit(lsurf->surf);
+            }
+        }
+        shm_buffer_destroy(&sb);
     }
 }
 
@@ -98,6 +180,7 @@ void surface_mgr_on_output_added(struct surface_mgr *mgr, struct output *out)
         return;
     }
     lsurf->out = out;
+    lsurf->ctx = mgr->ctx;
     lsurf->anchor = ZWLR_LAYER_SURFACE_V1_ANCHOR_TOP | ZWLR_LAYER_SURFACE_V1_ANCHOR_LEFT | ZWLR_LAYER_SURFACE_V1_ANCHOR_RIGHT;
     lsurf->exclusive_zone = BAR_HEIGHT;
     lsurf->configured_w = 0;
