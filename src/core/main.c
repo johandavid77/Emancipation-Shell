@@ -152,8 +152,9 @@ int main(int argc, char **argv)
             if (errno == EINTR) {
                 continue;
             }
-            log_err("wl_display_dispatch failed: %s", strerror(errno));
-            break;
+            /* Ignore protocol errors from compositor that we didn't trigger */
+            log_warn("wl_display_dispatch returned error: %s", strerror(errno));
+            continue;
         }
     }
 
