@@ -16,6 +16,7 @@ struct layer_surface {
     uint32_t configured_h;
     uint32_t anchor;
     int32_t exclusive_zone;
+    struct wayland_ctx *ctx;
     struct wl_list link;
 };
 
