@@ -93,34 +93,33 @@ static void layer_surface_configure(void *data,
         int h = (height > 0) ? (int)height : BAR_HEIGHT;
         if (w <= 0) w = 0;
         if (h <= 0) h = BAR_HEIGHT;
-        if (lsurf->ctx && lsurf->ctx->shm && w > 0 && h > 0) {
-            if (lsurf->bar_buf == NULL || lsurf->bar_size < (size_t)(w*4*h)) {
-                if (lsurf->bar_buf) wl_buffer_destroy(lsurf->bar_buf);
-                if (lsurf->bar_data && lsurf->bar_data != MAP_FAILED) munmap(lsurf->bar_data, lsurf->bar_size);
-                if (lsurf->bar_fd >= 0) { close(lsurf->bar_fd); lsurf->bar_fd = -1; }
-                char name[] = "/emanc-shell-XXXXXX";
-                lsurf->bar_fd = mkstemp(name);
-                if (lsurf->bar_fd >= 0) {
-                    unlink(name);
-                    lsurf->bar_stride = w*4;
-                    lsurf->bar_size = lsurf->bar_stride * h;
-                    ftruncate(lsurf->bar_fd, lsurf->bar_size);
-                    lsurf->bar_data = mmap(NULL, lsurf->bar_size, PROT_READ|PROT_WRITE, MAP_SHARED, lsurf->bar_fd, 0);
-                    if (lsurf->bar_data && lsurf->bar_data != MAP_FAILED) {
-                        uint32_t *p = (uint32_t*)lsurf->bar_data;
-                        for (int i = 0; i < w*h; i++) p[i] = 0xFF1F1F1F;
-                        struct wl_shm_pool *pool = wl_shm_create_pool(lsurf->ctx->shm, lsurf->bar_fd, lsurf->bar_size);
-                        if (pool) {
-                            lsurf->bar_buf = wl_shm_pool_create_buffer(pool, 0, w, h, lsurf->bar_stride, WL_SHM_FORMAT_ARGB8888);
-                            wl_shm_pool_destroy(pool);
-                        }
+        lsurf->configured_w = w;
+        lsurf->configured_h = h;
+        if (lsurf->ctx && lsurf->ctx->shm && w > 0 && h > 0 && lsurf->bar_buf == NULL) {
+            char name[] = "/emanc-shm-XXXXXX";
+            int fd = mkstemp(name);
+            if (fd >= 0) {
+                unlink(name);
+                lsurf->bar_stride = w*4;
+                lsurf->bar_size = lsurf->bar_stride * h;
+                ftruncate(fd, lsurf->bar_size);
+                void *data = mmap(NULL, lsurf->bar_size, PROT_READ|PROT_WRITE, MAP_SHARED, fd, 0);
+                if (data && data != MAP_FAILED) {
+                    uint32_t *p = (uint32_t*)data;
+                    for (int i = 0; i < w*h; i++) p[i] = 0xFF1F1F1F;
+                    struct wl_shm_pool *pool = wl_shm_create_pool(lsurf->ctx->shm, fd, lsurf->bar_size);
+                    if (pool) {
+                        lsurf->bar_buf = wl_shm_pool_create_buffer(pool, 0, w, h, lsurf->bar_stride, WL_SHM_FORMAT_ARGB8888);
+                        wl_shm_pool_destroy(pool);
                     }
+                    if (lsurf->bar_buf) {
+                        wl_surface_attach(lsurf->surf, lsurf->bar_buf, 0, 0);
+                        wl_surface_damage_buffer(lsurf->surf, 0, 0, w, h);
+                        wl_surface_commit(lsurf->surf);
+                    }
+                    munmap(data, lsurf->bar_size);
                 }
-            }
-            if (lsurf->bar_buf) {
-                wl_surface_attach(lsurf->surf, lsurf->bar_buf, 0, 0);
-                wl_surface_damage_buffer(lsurf->surf, 0, 0, w, h);
-                wl_surface_commit(lsurf->surf);
+                close(fd);
             }
         }
     }
@@ -219,7 +218,7 @@ void surface_mgr_on_output_added(struct surface_mgr *mgr, struct output *out)
     lsurf->ls = zwlr_layer_shell_v1_get_layer_surface(mgr->ctx->layer_shell,
                                                       lsurf->surf,
                                                       out->wl,
-                                                      ZWLR_LAYER_SHELL_V1_LAYER_TOP,
+                                                      ZWLR_LAYER_SHELL_V1_LAYER_BOTTOM,
                                                       "emancipation-shell");
     if (!lsurf->ls) {
         log_err("failed to create zwlr_layer_surface");
@@ -230,8 +229,7 @@ void surface_mgr_on_output_added(struct surface_mgr *mgr, struct output *out)
     zwlr_layer_surface_v1_set_anchor(lsurf->ls, lsurf->anchor);
     uint32_t w = (out->w > 0) ? (uint32_t)out->w : 0;
     zwlr_layer_surface_v1_set_size(lsurf->ls, w, BAR_HEIGHT);
-    zwlr_layer_surface_v1_set_exclusive_zone(lsurf->ls, lsurf->exclusive_zone);
-    zwlr_layer_surface_v1_add_listener(lsurf->ls, &layer_surface_listener, lsurf);
+        zwlr_layer_surface_v1_add_listener(lsurf->ls, &layer_surface_listener, lsurf);
     wl_surface_commit(lsurf->surf);
     wl_list_insert(&mgr->layers, &lsurf->link);
     log_info("layer surface created for output (w=%d)", out->w);
@@ -271,7 +269,6 @@ void surface_mgr_relayout(struct surface_mgr *mgr)
         }
         uint32_t w = (lsurf->out->w > 0) ? (uint32_t)lsurf->out->w : 0;
         zwlr_layer_surface_v1_set_size(lsurf->ls, w, BAR_HEIGHT);
-        zwlr_layer_surface_v1_set_exclusive_zone(lsurf->ls, lsurf->exclusive_zone);
-        wl_surface_commit(lsurf->surf);
+                wl_surface_commit(lsurf->surf);
     }
 }

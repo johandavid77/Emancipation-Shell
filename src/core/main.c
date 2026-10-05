@@ -153,7 +153,6 @@ int main(int argc, char **argv)
                 continue;
             }
             /* Ignore protocol errors from compositor that we didn't trigger */
-            log_warn("wl_display_dispatch returned error: %s", strerror(errno));
             continue;
         }
     }
