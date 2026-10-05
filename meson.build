@@ -78,6 +78,9 @@ srcs = [
   'src/ipc/ipc.c',
   'src/clipboard/clipboard.c',
   'src/render/renderer.c',
+  'src/render/gl_shared_context.c',
+  'src/render/render_target.c',
+  'src/render/renderer_gl.c',
   'src/plugins/plugin.c',
   'src/widgets/desktop_widget.c',
   'src/third_party/tomlc99/toml.c',
@@ -89,6 +92,11 @@ srcs = [
 executable('emancipation-shell',
   srcs,
   include_directories: [inc_dirs, gen_inc, include_directories('src')],
-  dependencies: [wl_client],
+  dependencies: [
+    wl_client,
+    dependency('egl', required: true),
+    dependency('glesv2', required: true),
+    dependency('wayland-egl', required: true),
+  ],
   install: false
 )

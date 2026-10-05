@@ -17,11 +17,13 @@ struct layer_surface {
     uint32_t anchor;
     int32_t exclusive_zone;
     struct wayland_ctx *ctx;
+    struct wl_buffer *bar_buf;
     struct wl_list link;
 };
 
 struct surface_mgr {
     struct wayland_ctx *ctx;
+    struct wl_buffer *bar_buf;
     struct wl_list layers; /* list of layer_surface */
     struct wl_list *outputs; /* reference to outputs list */
     bool shutdown;

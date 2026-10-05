@@ -1,5 +1,9 @@
 #define _GNU_SOURCE
 #include "core/surface_mgr.h"
+#include "render/gl_shared_context.h"
+#include "render/render_target.h"
+#include "render/renderer_gl.h"
+
 #include "core/wayland.h"
 #include "core/output.h"
 #include "util/log.h"
@@ -13,6 +17,11 @@
 
 #define BAR_HEIGHT 32
 #define BAR_BG 0xFF1F1F1F /* ARGB: gris oscuro */
+static struct surface_mgr *g_mgr = NULL;
+static struct gl_shared_context g_shared;
+static struct renderer_gl g_rend;
+static struct render_target g_rt;
+static int g_egl_inited = 0;
 
 struct shm_buffer {
     struct wl_buffer *buf;
@@ -91,10 +100,22 @@ static void layer_surface_configure(void *data,
         if (!lsurf->surf) return;
         int w = (width > 0) ? (int)width : ((lsurf->out && lsurf->out->w > 0) ? lsurf->out->w : 0);
         int h = (height > 0) ? (int)height : BAR_HEIGHT;
-        if (w < 0) w = 0;
-        if (h < 0) h = 0;
+        if (w <= 0) w = 1;
+        if (h <= 0) h = BAR_HEIGHT;
         lsurf->configured_w = w;
         lsurf->configured_h = h;
+        if (g_egl_inited && g_shared.dpy != EGL_NO_DISPLAY && g_shared.cfg) {
+            render_target_destroy(&g_rt, g_shared.dpy);
+            render_target_create(&g_rt, lsurf->surf, g_shared.dpy, g_shared.cfg, w, h);
+            if (renderer_gl_make_current(&g_rend, &g_rt)) {
+                renderer_gl_clear(&g_rend, 0.12f, 0.12f, 0.12f, 1.0f);
+                renderer_gl_end(&g_rend, &g_rt);
+            } else {
+                if (g_rt.surf != EGL_NO_SURFACE) {
+                    eglSwapBuffers(g_shared.dpy, g_rt.surf);
+                }
+            }
+        }
     }
 }
 
@@ -122,6 +143,11 @@ void surface_mgr_init(struct surface_mgr *mgr, struct wayland_ctx *ctx, struct w
     mgr->outputs = outputs;
     wl_list_init(&mgr->layers);
     mgr->shutdown = false;
+    if (!g_egl_inited && ctx->display) {
+        gl_shared_context_init(&g_shared, ctx->display, 1);
+        renderer_gl_init(&g_rend, &g_shared);
+        g_egl_inited = 1;
+    }
 }
 
 void surface_mgr_fini(struct surface_mgr *mgr)
@@ -132,6 +158,11 @@ void surface_mgr_fini(struct surface_mgr *mgr)
             zwlr_layer_surface_v1_destroy(lsurf->ls);
             lsurf->ls = NULL;
         }
+        if (lsurf->bar_buf) {
+            wl_buffer_destroy(lsurf->bar_buf);
+            lsurf->bar_buf = NULL;
+        }
+        /* EGL rt not per surface here */
         if (lsurf->surf) {
             wl_surface_destroy(lsurf->surf);
             lsurf->surf = NULL;
@@ -175,7 +206,7 @@ void surface_mgr_on_output_added(struct surface_mgr *mgr, struct output *out)
     lsurf->out = out;
     lsurf->ctx = mgr->ctx;
     lsurf->anchor = ZWLR_LAYER_SURFACE_V1_ANCHOR_TOP | ZWLR_LAYER_SURFACE_V1_ANCHOR_LEFT | ZWLR_LAYER_SURFACE_V1_ANCHOR_RIGHT;
-    lsurf->exclusive_zone = BAR_HEIGHT;
+    lsurf->exclusive_zone = 0;
     lsurf->configured_w = 0;
     lsurf->configured_h = 0;
 
@@ -188,7 +219,7 @@ void surface_mgr_on_output_added(struct surface_mgr *mgr, struct output *out)
     lsurf->ls = zwlr_layer_shell_v1_get_layer_surface(mgr->ctx->layer_shell,
                                                       lsurf->surf,
                                                       out->wl,
-                                                      ZWLR_LAYER_SHELL_V1_LAYER_BOTTOM,
+                                                      ZWLR_LAYER_SHELL_V1_LAYER_TOP,
                                                       "emancipation-shell");
     if (!lsurf->ls) {
         log_err("failed to create zwlr_layer_surface");
