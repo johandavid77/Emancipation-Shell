@@ -108,7 +108,8 @@ static void layer_surface_configure(void *data,
             render_target_destroy(&g_rt, g_shared.dpy);
             render_target_create(&g_rt, lsurf->surf, g_shared.dpy, g_shared.cfg, w, h);
             if (renderer_gl_make_current(&g_rend, &g_rt)) {
-                renderer_gl_clear(&g_rend, 0.12f, 0.12f, 0.12f, 1.0f);
+                renderer_gl_set_viewport(&g_rend, w, h);
+                renderer_gl_clear(&g_rend, 0.0f, 0.2f, 0.8f, 1.0f);
                 renderer_gl_end(&g_rend, &g_rt);
             } else {
                 if (g_rt.surf != EGL_NO_SURFACE) {
@@ -206,7 +207,7 @@ void surface_mgr_on_output_added(struct surface_mgr *mgr, struct output *out)
     lsurf->out = out;
     lsurf->ctx = mgr->ctx;
     lsurf->anchor = ZWLR_LAYER_SURFACE_V1_ANCHOR_TOP | ZWLR_LAYER_SURFACE_V1_ANCHOR_LEFT | ZWLR_LAYER_SURFACE_V1_ANCHOR_RIGHT;
-    lsurf->exclusive_zone = 0;
+    lsurf->exclusive_zone = BAR_HEIGHT;
     lsurf->configured_w = 0;
     lsurf->configured_h = 0;
 

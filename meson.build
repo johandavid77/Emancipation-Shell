@@ -9,6 +9,7 @@ sc = find_program('wayland-scanner', required: true)
 layer_xml = files('protocols/wlr-layer-shell-unstable-v1.xml')
 ws_xml = files('protocols/ext-workspace-v1.xml')
 sl_xml = files('protocols/ext-session-lock-v1.xml')
+xdg_xml = files('protocols/xdg-shell.xml')
 
 layer_h = custom_target('layer-shell-client-protocol.h',
   input: layer_xml,
@@ -49,6 +50,19 @@ sl_c = custom_target('ext-session-lock-client-protocol.c',
   install: false
 )
 
+xdg_h = custom_target('xdg-shell-client-protocol.h',
+  input: xdg_xml,
+  output: 'xdg-shell-client-protocol.h',
+  command: [sc, 'client-header', '@INPUT@', '@OUTPUT@'],
+  install: false
+)
+xdg_c = custom_target('xdg-shell-client-protocol.c',
+  input: xdg_xml,
+  output: 'xdg-shell-client-protocol.c',
+  command: [sc, 'private-code', '@INPUT@', '@OUTPUT@'],
+  install: false
+)
+
 gen_inc = include_directories('.')
 
 inc_dirs = include_directories('include')
@@ -85,6 +99,7 @@ srcs = [
   'src/widgets/desktop_widget.c',
   'src/third_party/tomlc99/toml.c',
   layer_c, layer_h,
+  xdg_c, xdg_h,
   ws_c, ws_h,
   sl_c, sl_h
 ]
