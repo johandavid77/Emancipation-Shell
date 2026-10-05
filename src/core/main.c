@@ -1,9 +1,15 @@
+#define _GNU_SOURCE
 #include <stdio.h>
 #include <stdlib.h>
 #include <signal.h>
 #include <string.h>
 #include <errno.h>
 #include <stddef.h>
+#include <locale.h>
+#include <poll.h>
+#include <time.h>
+#include <unistd.h>
+#include <sys/timerfd.h>
 #include "wayland-client.h"
 #include "core/wayland.h"
 #include "core/output.h"
@@ -14,7 +20,6 @@
 #include "config/parser.h"
 #include "config/watcher.h"
 #include "bar/workspaces.h"
-#include "bar/bar.h"
 #include "launcher/launcher.h"
 #include "dock/dock.h"
 #include "control/control_center.h"
@@ -28,9 +33,8 @@
 #include "clipboard/clipboard.h"
 #include "zwlr-layer-shell-v1-client-protocol.h"
 #include "ext-workspace-v1-client-protocol.h"
-#include "ext-session-lock-v1-client-protocol.h"
 
-static int g_shutdown = 0;
+static volatile sig_atomic_t g_shutdown = 0;
 
 static void handle_signal(int sig)
 {
@@ -40,11 +44,42 @@ static void handle_signal(int sig)
 
 static void on_config_changed(void *userdata, const struct config *cfg, bool applied)
 {
-    (void)userdata;
-    if (applied) {
-        log_info("config applied: bar.height=%d font.size=%d", cfg->bar.height, cfg->font.size);
-    } else {
+    struct surface_mgr *mgr = userdata;
+    if (!applied) {
         log_warn("config not applied, keeping last valid");
+        return;
+    }
+    log_info("config applied: bar.height=%d font=\"%s\" %d", cfg->bar.height, cfg->font.family, cfg->font.size);
+    if (mgr && mgr->ctx->compositor) surface_mgr_apply_config(mgr, cfg);
+}
+
+static void on_workspaces_changed(void *userdata)
+{
+    surface_mgr_request_redraw(userdata);
+}
+
+/* Fire at the start of every minute so the clock flips on time. */
+static void arm_clock(int tfd)
+{
+    struct timespec now;
+    clock_gettime(CLOCK_REALTIME, &now);
+    struct itimerspec its = {
+        .it_value = { .tv_sec = now.tv_sec - (now.tv_sec % 60) + 60, .tv_nsec = 0 },
+        .it_interval = { .tv_sec = 60, .tv_nsec = 0 },
+    };
+    timerfd_settime(tfd, TFD_TIMER_ABSTIME | TFD_TIMER_CANCEL_ON_SET, &its, NULL);
+}
+
+static void report_display_error(struct wl_display *display)
+{
+    int err = wl_display_get_error(display);
+    if (err == EPROTO) {
+        const struct wl_interface *iface = NULL;
+        uint32_t id = 0;
+        uint32_t code = wl_display_get_protocol_error(display, &iface, &id);
+        log_err("wayland protocol error %u on %s#%u", code, iface ? iface->name : "?", id);
+    } else {
+        log_err("wayland connection lost: %s", strerror(err));
     }
 }
 
@@ -52,19 +87,15 @@ int main(int argc, char **argv)
 {
     (void)argc;
     (void)argv;
-    log_set_level(LOG_INFO);
+    setlocale(LC_ALL, "");
+    log_set_level(getenv("EMANCIPATION_DEBUG") ? LOG_DEBUG : LOG_INFO);
 
-    const char *display_name = getenv("WAYLAND_DISPLAY");
-    if (!display_name || display_name[0] == '\0') {
-        display_name = "wayland-0";
-    }
-
-    struct wl_display *display = wl_display_connect(display_name);
+    struct wl_display *display = wl_display_connect(NULL); /* honours WAYLAND_DISPLAY */
     if (!display) {
-        log_err("failed to connect to Wayland display: %s", display_name);
+        log_err("failed to connect to Wayland display");
         return 1;
     }
-    log_info("connected to Wayland display: %s", display_name);
+    log_info("connected to Wayland display");
 
     struct wayland_ctx ctx;
     memset(&ctx, 0, sizeof(ctx));
@@ -76,102 +107,148 @@ int main(int argc, char **argv)
     struct surface_mgr mgr;
     surface_mgr_init(&mgr, &ctx, &outputs);
 
+    /* must exist before the registry so the first workspace burst is caught */
+    struct workspace_manager *wm = workspaces_create(&ctx);
+    ctx.workspaces = wm;
+    workspaces_set_changed_cb(wm, on_workspaces_changed, &mgr);
+
+    /* config first: bar height/visibility are needed when surfaces are made */
+    const char *cfg_path = config_default_path();
+    struct config_watcher *cw = config_watcher_create(cfg_path, NULL, &mgr, on_config_changed);
+    struct config cfg_def;
+    config_defaults(&cfg_def);
+    const struct config *cfg = &cfg_def;
+    if (cw) {
+        config_watcher_reload_now(cw);
+        cfg = config_watcher_get_last(cw);
+        log_info("config loaded: %s", cfg_path);
+    } else {
+        log_warn("config watcher could not be initialized, using defaults");
+    }
+    surface_mgr_set_sources(&mgr, cfg, wm);
+
     struct registry_state reg_state;
     registry_init(&reg_state, &ctx, &outputs, &mgr);
-
     registry_bind_globals(&reg_state);
-    wl_display_roundtrip(display);
-
-    if (!ctx.compositor) {
-        log_err("wl_compositor not available");
-        surface_mgr_fini(&mgr);
-        if (ctx.registry) wl_registry_destroy(ctx.registry);
-        wl_display_disconnect(display);
+    if (wl_display_roundtrip(display) < 0 || wl_display_roundtrip(display) < 0) {
+        report_display_error(display);
         return 1;
     }
 
-    const char *cfg_path = config_default_path();
-    struct config_watcher *cw = config_watcher_create(cfg_path, NULL, NULL, on_config_changed);
-    if (cw) {
-        config_watcher_reload_now(cw);
-        log_info("config loaded: %s", cfg_path);
-    } else {
-        log_warn("config watcher could not be initialized");
+    int rc = 0;
+    if (!ctx.compositor || !ctx.shm || !ctx.layer_shell) {
+        log_err("compositor lacks required globals (wl_compositor=%d wl_shm=%d zwlr_layer_shell_v1=%d)",
+                !!ctx.compositor, !!ctx.shm, !!ctx.layer_shell);
+        rc = 1;
+        goto cleanup;
     }
-    const struct config *cfg_last = NULL;
-    struct config cfg_def;
-    if (cw) {
-        cfg_last = config_watcher_get_last(cw);
-    }
-    if (!cfg_last) {
-        config_defaults(&cfg_def);
-        cfg_last = &cfg_def;
+    if (!ctx.workspace_manager) log_warn("ext_workspace_manager_v1 unavailable: no workspace list");
+
+    /* outputs announced before layer_shell were skipped by the registry */
+    struct output *o;
+    wl_list_for_each(o, &outputs, link) {
+        surface_mgr_on_output_added(&mgr, o);
     }
 
-    struct workspace_manager *wm = workspaces_create(&ctx);
-    if (wm && ctx.workspace_manager) {
-        workspaces_bind(wm);
-    }
-
+    struct output *out_first = wl_list_empty(&outputs) ? NULL
+        : wl_container_of(outputs.next, out_first, link);
     struct launcher *launcher = launcher_create(&ctx);
     struct dock *dock = NULL;
     struct control_center *cc = NULL;
     struct osd *osd = NULL;
-    struct notify_daemon *nd = NULL;
-    struct lock_screen *ls = NULL;
-    struct session_actions *sa = NULL;
     struct wallpaper *wp = NULL;
-    struct hotkeys *hk = NULL;
-    struct ipc_server *ipc = NULL;
-    struct clipboard *clip = NULL;
-    struct output *out_first = NULL;
-    if (!wl_list_empty(&outputs)) {
-        struct wl_list *first = outputs.next;
-        out_first = (struct output *)((char *)first - offsetof(struct output, link));
-    }
     if (out_first) {
-        dock = dock_create(&ctx, out_first, cfg_last);
+        dock = dock_create(&ctx, out_first, cfg);
         cc = control_center_create(&ctx, out_first);
         osd = osd_create(&ctx, out_first);
         wp = wallpaper_create(&ctx, out_first);
     }
-    nd = notify_daemon_create(&ctx);
-    ls = lock_screen_create(&ctx);
-    sa = session_actions_create();
-    hk = hotkeys_create();
-    ipc = ipc_create(&ctx);
-    clip = clipboard_create(100);
+    struct notify_daemon *nd = notify_daemon_create(&ctx);
+    struct lock_screen *lock = lock_screen_create(&ctx);
+    struct session_actions *sa = session_actions_create();
+    struct hotkeys *hk = hotkeys_create();
+    struct ipc_server *ipc = ipc_create(&ctx);
+    struct clipboard *clip = clipboard_create(100);
 
-    signal(SIGINT, handle_signal);
-    signal(SIGTERM, handle_signal);
+    struct sigaction sact;
+    memset(&sact, 0, sizeof(sact));
+    sact.sa_handler = handle_signal;
+    sigaction(SIGINT, &sact, NULL);
+    sigaction(SIGTERM, &sact, NULL);
+    signal(SIGPIPE, SIG_IGN);
 
-    log_info("surface manager ready");
+    int tfd = timerfd_create(CLOCK_REALTIME, TFD_NONBLOCK | TFD_CLOEXEC);
+    if (tfd >= 0) arm_clock(tfd);
+
+    enum { FD_WL, FD_CLOCK, FD_CFG, FD_COUNT };
+    struct pollfd fds[FD_COUNT] = {
+        [FD_WL] = { .fd = wl_display_get_fd(display), .events = POLLIN },
+        [FD_CLOCK] = { .fd = tfd, .events = POLLIN },
+        [FD_CFG] = { .fd = config_watcher_get_fd(cw), .events = POLLIN },
+    };
+
+    log_info("emancipation-shell running");
     while (!g_shutdown && !mgr.shutdown) {
-        int ret = wl_display_dispatch(display);
-        if (ret < 0) {
-            if (errno == EINTR) {
-                continue;
-            }
-            /* Ignore protocol errors from compositor that we didn't trigger */
-            continue;
+        while (wl_display_prepare_read(display) != 0) {
+            if (wl_display_dispatch_pending(display) < 0) goto wl_error;
         }
+        if (wl_display_flush(display) < 0 && errno != EAGAIN) {
+            wl_display_cancel_read(display);
+            goto wl_error;
+        }
+        if (poll(fds, FD_COUNT, -1) < 0) {
+            wl_display_cancel_read(display);
+            if (errno == EINTR) continue;
+            log_err("poll failed: %s", strerror(errno));
+            rc = 1;
+            break;
+        }
+        if (fds[FD_WL].revents & (POLLERR | POLLHUP)) {
+            wl_display_cancel_read(display);
+            goto wl_error;
+        }
+        if (fds[FD_WL].revents & POLLIN) {
+            if (wl_display_read_events(display) < 0) goto wl_error;
+        } else {
+            wl_display_cancel_read(display);
+        }
+        if (wl_display_dispatch_pending(display) < 0) goto wl_error;
+
+        if (fds[FD_CLOCK].revents & POLLIN) {
+            uint64_t exp;
+            if (read(tfd, &exp, sizeof(exp)) < 0 && errno == ECANCELED) {
+                arm_clock(tfd); /* wall clock jumped: realign */
+            }
+            surface_mgr_request_redraw(&mgr);
+        }
+        if (fds[FD_CFG].revents & POLLIN) {
+            config_watcher_dispatch(cw);
+        }
+        continue;
+wl_error:
+        report_display_error(display);
+        rc = 1;
+        break;
     }
 
     log_info("shutting down...");
+    if (tfd >= 0) close(tfd);
     if (clip) clipboard_destroy(clip);
     if (ipc) ipc_destroy(ipc);
     if (hk) hotkeys_destroy(hk);
     if (sa) session_actions_destroy(sa);
-    if (ls) lock_screen_destroy(ls);
+    if (lock) lock_screen_destroy(lock);
     if (nd) notify_daemon_destroy(nd);
+    if (wp) wallpaper_destroy(wp);
     if (osd) osd_destroy(osd);
     if (cc) control_center_destroy(cc);
     if (dock) dock_destroy(dock);
     if (launcher) launcher_destroy(launcher);
+
+cleanup:
+    surface_mgr_fini(&mgr);
     if (wm) workspaces_destroy(wm);
     if (cw) config_watcher_destroy(cw);
-    if (wp) wallpaper_destroy(wp);
-    surface_mgr_fini(&mgr);
     struct output *out, *tmp;
     wl_list_for_each_safe(out, tmp, &outputs, link) {
         wl_list_remove(&out->link);
@@ -185,5 +262,5 @@ int main(int argc, char **argv)
     if (ctx.registry) wl_registry_destroy(ctx.registry);
     wl_display_disconnect(display);
     log_info("shutdown complete");
-    return 0;
+    return rc;
 }

@@ -1,6 +1,7 @@
 #include "core/registry.h"
 #include "core/output.h"
 #include "core/surface_mgr.h"
+#include "bar/workspaces.h"
 #include "util/log.h"
 #include "zwlr-layer-shell-v1-client-protocol.h"
 #include "ext-workspace-v1-client-protocol.h"
@@ -24,13 +25,15 @@ static void registry_global(void *data, struct wl_registry *registry,
     } else if (strcmp(interface, "zwlr_layer_shell_v1") == 0) {
         state->ctx->layer_shell = (struct zwlr_layer_shell_v1 *)wl_registry_bind(registry, name,
                                                                                   &zwlr_layer_shell_v1_interface,
-                                                                                  1);
+                                                                                  version < 4 ? version : 4);
         log_debug("bound zwlr_layer_shell_v1");
     } else if (strcmp(interface, "ext_workspace_manager_v1") == 0) {
-        uint32_t v = version >= 1 ? version : 1;
+        uint32_t v = version < (uint32_t)ext_workspace_manager_v1_interface.version
+                         ? version : (uint32_t)ext_workspace_manager_v1_interface.version;
         state->ctx->workspace_manager = (struct ext_workspace_manager_v1 *)wl_registry_bind(registry, name,
                                                                                            &ext_workspace_manager_v1_interface,
                                                                                            v);
+        workspaces_bind(state->ctx->workspaces);
         log_debug("bound ext_workspace_manager_v1");
     } else if (strcmp(interface, "wl_output") == 0) {
         struct wl_output *wl_out = (struct wl_output *)wl_registry_bind(registry, name,

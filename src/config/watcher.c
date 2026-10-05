@@ -93,9 +93,16 @@ struct config_watcher *config_watcher_create(const char *path, void *loop, void 
     w->cb = cb;
     w->has_err = false;
     w->last_err[0] = '\0';
-    w->inotify_fd = -1;
+    w->inotify_fd = inotify_init1(IN_NONBLOCK | IN_CLOEXEC);
     w->wd = -1;
     w->src = NULL;
+    if (w->inotify_fd >= 0) {
+        /* watch the directory: editors usually replace the file atomically */
+        w->wd = inotify_add_watch(w->inotify_fd, w->dir, IN_CLOSE_WRITE | IN_MOVED_TO | IN_CREATE);
+        if (w->wd < 0) log_warn("inotify_add_watch(%s) failed: %s", w->dir, strerror(errno));
+    } else {
+        log_warn("inotify_init1 failed: %s", strerror(errno));
+    }
     return w;
 }
 
@@ -125,4 +132,29 @@ const char *config_watcher_last_error(struct config_watcher *w)
 {
     if (!w) return "";
     return w->last_err;
+}
+
+int config_watcher_get_fd(struct config_watcher *w)
+{
+    return w ? w->inotify_fd : -1;
+}
+
+void config_watcher_dispatch(struct config_watcher *w)
+{
+    if (!w || w->inotify_fd < 0) return;
+    char buf[BUF_LEN] __attribute__((aligned(__alignof__(struct inotify_event))));
+    char tmp[512];
+    snprintf(tmp, sizeof(tmp), "%s", w->path);
+    const char *base = basename(tmp);
+    bool reload = false;
+    for (;;) {
+        ssize_t len = read(w->inotify_fd, buf, sizeof(buf));
+        if (len <= 0) break;
+        for (char *p = buf; p < buf + len;) {
+            const struct inotify_event *ev = (const struct inotify_event *)p;
+            if (ev->len && strcmp(ev->name, base) == 0) reload = true;
+            p += sizeof(struct inotify_event) + ev->len;
+        }
+    }
+    if (reload) config_watcher_reload_now(w);
 }

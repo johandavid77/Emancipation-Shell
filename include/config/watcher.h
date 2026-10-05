@@ -14,5 +14,9 @@ void config_watcher_reload_now(struct config_watcher *w);
 const struct config *config_watcher_get_last(struct config_watcher *w);
 bool config_watcher_has_error(struct config_watcher *w);
 const char *config_watcher_last_error(struct config_watcher *w);
+/* inotify fd to poll(); -1 if unavailable */
+int config_watcher_get_fd(struct config_watcher *w);
+/* drain pending inotify events and reload if the config file changed */
+void config_watcher_dispatch(struct config_watcher *w);
 
 #endif /* EMANCIPATION_CONFIG_WATCHER_H */

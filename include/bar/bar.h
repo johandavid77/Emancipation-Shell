@@ -1,19 +1,15 @@
 #ifndef EMANCIPATION_BAR_H
 #define EMANCIPATION_BAR_H
 
+#include <cairo.h>
 #include <wayland-client.h>
-#include <stdbool.h>
 
-struct bar;
-struct wayland_ctx;
-struct output;
-struct surface_mgr;
 struct config;
+struct workspace_manager;
 
-struct bar *bar_create(struct wayland_ctx *ctx, struct surface_mgr *smgr, struct output *out, const struct config *cfg);
-void bar_destroy(struct bar *b);
-void bar_update_config(struct bar *b, const struct config *cfg);
-void bar_relayout(struct bar *b);
-bool bar_is_visible(struct bar *b);
+/* Paint the bar contents. `w`/`h` are logical sizes; the caller is
+ * expected to have applied the buffer scale to `cr` already. */
+void bar_draw(cairo_t *cr, int w, int h, const struct config *cfg,
+              struct workspace_manager *wm, struct wl_output *output);
 
 #endif /* EMANCIPATION_BAR_H */

@@ -4,230 +4,250 @@
 #include "ext-workspace-v1-client-protocol.h"
 #include <stdlib.h>
 #include <string.h>
+#include <stdint.h>
+#include <stdio.h>
 
-struct workspace {
-    struct ext_workspace_handle_v1 *handle;
-    char name[256];
-    char id[128];
-    bool active;
-    bool visible;
-    bool urgent;
-    struct wl_list link;
-};
+#define WS_MAX_OUTPUTS 8
 
 struct workspace_group {
     struct ext_workspace_group_handle_v1 *handle;
-    struct wl_list workspaces;
+    struct wl_output *outputs[WS_MAX_OUTPUTS];
+    size_t n_outputs;
+    struct wl_list link;
+};
+
+struct workspace {
+    struct ext_workspace_handle_v1 *handle;
+    struct workspace_group *group; /* may be NULL */
+    char name[64];
+    uint32_t coord[2];
+    size_t n_coord;
+    uint32_t state;
     struct wl_list link;
 };
 
 struct workspace_manager {
     struct wayland_ctx *ctx;
     struct ext_workspace_manager_v1 *mgr;
-    struct wl_list groups;
-    bool stopped;
+    struct wl_list groups;     /* workspace_group.link */
+    struct wl_list workspaces; /* workspace.link */
+    workspaces_changed_cb cb;
+    void *cb_data;
+    bool finished;
 };
 
-static void workspace_handle_name(void *data,
-                                  struct ext_workspace_handle_v1 *handle,
-                                  const char *name)
+/* ---- workspace handle ---------------------------------------------------- */
+
+static void ws_id(void *data, struct ext_workspace_handle_v1 *h, const char *id)
 {
-    (void)handle;
-    struct workspace *ws = (struct workspace *)data;
-    if (ws && name) {
-        strncpy(ws->name, name, sizeof(ws->name) - 1);
-        ws->name[sizeof(ws->name) - 1] = '\0';
+    (void)data; (void)h; (void)id;
+}
+
+static void ws_name(void *data, struct ext_workspace_handle_v1 *h, const char *name)
+{
+    (void)h;
+    struct workspace *ws = data;
+    snprintf(ws->name, sizeof(ws->name), "%s", name ? name : "");
+}
+
+static void ws_coordinates(void *data, struct ext_workspace_handle_v1 *h, struct wl_array *coords)
+{
+    (void)h;
+    struct workspace *ws = data;
+    ws->n_coord = 0;
+    uint32_t *c;
+    wl_array_for_each(c, coords) {
+        if (ws->n_coord >= 2) break;
+        ws->coord[ws->n_coord++] = *c;
     }
 }
 
-static void workspace_handle_id(void *data,
-                                struct ext_workspace_handle_v1 *handle,
-                                const char *id)
+static void ws_state(void *data, struct ext_workspace_handle_v1 *h, uint32_t state)
 {
-    (void)handle;
-    struct workspace *ws = (struct workspace *)data;
-    if (ws && id) {
-        strncpy(ws->id, id, sizeof(ws->id) - 1);
-        ws->id[sizeof(ws->id) - 1] = '\0';
-    }
+    (void)h;
+    struct workspace *ws = data;
+    ws->state = state; /* 0 is a valid value: clears every flag */
 }
 
-static void workspace_handle_state(void *data,
-                                   struct ext_workspace_handle_v1 *handle,
-                                   uint32_t state)
+static void ws_capabilities(void *data, struct ext_workspace_handle_v1 *h, uint32_t caps)
 {
-    (void)handle;
-    struct workspace *ws = (struct workspace *)data;
-    if (!ws || !state) return;
-    ws->active = false;
-    ws->visible = false;
-    ws->urgent = false;
-    ws->active = (state & EXT_WORKSPACE_HANDLE_V1_STATE_ACTIVE) != 0;
-    ws->urgent = (state & EXT_WORKSPACE_HANDLE_V1_STATE_URGENT) != 0;
-    ws->visible = (state & EXT_WORKSPACE_HANDLE_V1_STATE_HIDDEN) == 0;
+    (void)data; (void)h; (void)caps;
 }
 
-static void workspace_handle_coordinates(void *data,
-                                         struct ext_workspace_handle_v1 *handle,
-                                         struct wl_array *coordinates)
+static void ws_free(struct workspace *ws)
 {
-    (void)data;
-    (void)handle;
-    (void)coordinates;
+    wl_list_remove(&ws->link);
+    if (ws->handle) ext_workspace_handle_v1_destroy(ws->handle);
+    free(ws);
 }
 
-static void workspace_handle_capabilities(void *data,
-                                         struct ext_workspace_handle_v1 *handle,
-                                         uint32_t capabilities)
+static void ws_removed(void *data, struct ext_workspace_handle_v1 *h)
 {
-    (void)data;
-    (void)handle;
-    (void)capabilities;
+    (void)h;
+    ws_free(data);
 }
 
-static void workspace_handle_removed(void *data,
-                                    struct ext_workspace_handle_v1 *handle)
-{
-    (void)handle;
-    struct workspace *ws = (struct workspace *)data;
-    if (ws) {
-        wl_list_remove(&ws->link);
-        ext_workspace_handle_v1_destroy(handle);
-        free(ws);
-    }
-}
-
-static const struct ext_workspace_handle_v1_listener workspace_handle_listener = {
-    .name = workspace_handle_name,
-    .id = workspace_handle_id,
-    .state = workspace_handle_state,
-    .coordinates = workspace_handle_coordinates,
-    .capabilities = workspace_handle_capabilities,
-    .removed = workspace_handle_removed,
+static const struct ext_workspace_handle_v1_listener ws_listener = {
+    .id = ws_id,
+    .name = ws_name,
+    .coordinates = ws_coordinates,
+    .state = ws_state,
+    .capabilities = ws_capabilities,
+    .removed = ws_removed,
 };
-static void workspace_group_handle_capabilities(void *data,
-                                                struct ext_workspace_group_handle_v1 *group,
-                                                uint32_t capabilities)
+
+/* ---- group handle -------------------------------------------------------- */
+
+static struct workspace *find_ws(struct workspace_manager *wm, struct ext_workspace_handle_v1 *h)
 {
-    (void)data;
-    (void)group;
-    (void)capabilities;
+    struct workspace *ws;
+    wl_list_for_each(ws, &wm->workspaces, link) {
+        if (ws->handle == h) return ws;
+    }
+    return NULL;
 }
 
-static void workspace_group_handle_output_enter(void *data,
-                                                struct ext_workspace_group_handle_v1 *group,
-                                                struct wl_output *output)
+struct group_ctx {
+    struct workspace_manager *wm;
+    struct workspace_group *g;
+};
+
+static void grp_capabilities(void *data, struct ext_workspace_group_handle_v1 *h, uint32_t caps)
 {
-    (void)data;
-    (void)group;
-    (void)output;
+    (void)data; (void)h; (void)caps;
 }
 
-static void workspace_group_handle_output_leave(void *data,
-                                                struct ext_workspace_group_handle_v1 *group,
-                                                struct wl_output *output)
+static void grp_output_enter(void *data, struct ext_workspace_group_handle_v1 *h, struct wl_output *o)
 {
-    (void)data;
-    (void)group;
-    (void)output;
+    (void)h;
+    struct group_ctx *gc = data;
+    struct workspace_group *g = gc->g;
+    for (size_t i = 0; i < g->n_outputs; i++) {
+        if (g->outputs[i] == o) return;
+    }
+    if (g->n_outputs < WS_MAX_OUTPUTS) g->outputs[g->n_outputs++] = o;
 }
 
-static void workspace_group_handle_workspace_enter(void *data,
-                                                   struct ext_workspace_group_handle_v1 *group,
-                                                   struct ext_workspace_handle_v1 *workspace)
+static void grp_output_leave(void *data, struct ext_workspace_group_handle_v1 *h, struct wl_output *o)
 {
-    (void)group;
-    struct workspace_group *wg = (struct workspace_group *)data;
+    (void)h;
+    struct group_ctx *gc = data;
+    struct workspace_group *g = gc->g;
+    for (size_t i = 0; i < g->n_outputs; i++) {
+        if (g->outputs[i] == o) {
+            g->outputs[i] = g->outputs[--g->n_outputs];
+            return;
+        }
+    }
+}
+
+static void grp_workspace_enter(void *data, struct ext_workspace_group_handle_v1 *h,
+                                struct ext_workspace_handle_v1 *wsh)
+{
+    (void)h;
+    struct group_ctx *gc = data;
+    struct workspace *ws = find_ws(gc->wm, wsh);
+    if (ws) ws->group = gc->g;
+}
+
+static void grp_workspace_leave(void *data, struct ext_workspace_group_handle_v1 *h,
+                                struct ext_workspace_handle_v1 *wsh)
+{
+    (void)h;
+    struct group_ctx *gc = data;
+    struct workspace *ws = find_ws(gc->wm, wsh);
+    if (ws && ws->group == gc->g) ws->group = NULL;
+}
+
+static void grp_free(struct workspace_manager *wm, struct workspace_group *g)
+{
+    struct workspace *ws;
+    wl_list_for_each(ws, &wm->workspaces, link) {
+        if (ws->group == g) ws->group = NULL;
+    }
+    struct group_ctx *gc = g->handle ? ext_workspace_group_handle_v1_get_user_data(g->handle) : NULL;
+    wl_list_remove(&g->link);
+    if (g->handle) ext_workspace_group_handle_v1_destroy(g->handle);
+    free(gc);
+    free(g);
+}
+
+static void grp_removed(void *data, struct ext_workspace_group_handle_v1 *h)
+{
+    (void)h;
+    struct group_ctx *gc = data;
+    grp_free(gc->wm, gc->g);
+}
+
+static const struct ext_workspace_group_handle_v1_listener grp_listener = {
+    .capabilities = grp_capabilities,
+    .output_enter = grp_output_enter,
+    .output_leave = grp_output_leave,
+    .workspace_enter = grp_workspace_enter,
+    .workspace_leave = grp_workspace_leave,
+    .removed = grp_removed,
+};
+
+/* ---- manager ------------------------------------------------------------- */
+
+static void mgr_workspace_group(void *data, struct ext_workspace_manager_v1 *m,
+                                struct ext_workspace_group_handle_v1 *h)
+{
+    (void)m;
+    struct workspace_manager *wm = data;
+    struct workspace_group *g = calloc(1, sizeof(*g));
+    struct group_ctx *gc = calloc(1, sizeof(*gc));
+    if (!g || !gc) {
+        free(g);
+        free(gc);
+        ext_workspace_group_handle_v1_destroy(h);
+        return;
+    }
+    g->handle = h;
+    gc->wm = wm;
+    gc->g = g;
+    ext_workspace_group_handle_v1_add_listener(h, &grp_listener, gc);
+    wl_list_insert(wm->groups.prev, &g->link);
+}
+
+static void mgr_workspace(void *data, struct ext_workspace_manager_v1 *m,
+                          struct ext_workspace_handle_v1 *h)
+{
+    (void)m;
+    struct workspace_manager *wm = data;
     struct workspace *ws = calloc(1, sizeof(*ws));
-    if (!ws) return;
-    ws->handle = workspace;
-    wl_list_init(&ws->link);
-    ext_workspace_handle_v1_add_listener(workspace, &workspace_handle_listener, ws);
-    wl_list_insert(&wg->workspaces, &ws->link);
-    log_debug("workspace added to group");
-}
-
-static void workspace_group_handle_workspace_leave(void *data,
-                                                   struct ext_workspace_group_handle_v1 *group,
-                                                   struct ext_workspace_handle_v1 *workspace)
-{
-    (void)data;
-    (void)group;
-    (void)workspace;
-}
-
-static void workspace_group_handle_removed(void *data,
-                                           struct ext_workspace_group_handle_v1 *group)
-{
-    (void)group;
-    struct workspace_group *wg = (struct workspace_group *)data;
-    if (!wg) return;
-    struct workspace *ws, *wstmp;
-    wl_list_for_each_safe(ws, wstmp, &wg->workspaces, link) {
-        wl_list_remove(&ws->link);
-        if (ws->handle) ext_workspace_handle_v1_destroy(ws->handle);
-        free(ws);
+    if (!ws) {
+        ext_workspace_handle_v1_destroy(h);
+        return;
     }
-    wl_list_remove(&wg->link);
-    ext_workspace_group_handle_v1_destroy(group);
-    free(wg);
+    ws->handle = h;
+    ext_workspace_handle_v1_add_listener(h, &ws_listener, ws);
+    wl_list_insert(wm->workspaces.prev, &ws->link);
 }
 
-static const struct ext_workspace_group_handle_v1_listener workspace_group_listener = {
-    .capabilities = workspace_group_handle_capabilities,
-    .output_enter = workspace_group_handle_output_enter,
-    .output_leave = workspace_group_handle_output_leave,
-    .workspace_enter = workspace_group_handle_workspace_enter,
-    .workspace_leave = workspace_group_handle_workspace_leave,
-    .removed = workspace_group_handle_removed,
-};
-static void workspace_manager_workspace_group(void *data,
-                                              struct ext_workspace_manager_v1 *manager,
-                                              struct ext_workspace_group_handle_v1 *group)
+static void mgr_done(void *data, struct ext_workspace_manager_v1 *m)
 {
-    (void)manager;
-    struct workspace_manager *wm = (struct workspace_manager *)data;
-    struct workspace_group *wg = calloc(1, sizeof(*wg));
-    if (!wg) return;
-    wg->handle = group;
-    wl_list_init(&wg->workspaces);
-    wl_list_init(&wg->link);
-    ext_workspace_group_handle_v1_add_listener(group, &workspace_group_listener, wg);
-    wl_list_insert(&wm->groups, &wg->link);
-    log_debug("workspace group added");
+    (void)m;
+    struct workspace_manager *wm = data;
+    if (wm->cb) wm->cb(wm->cb_data);
 }
 
-static void workspace_manager_finished(void *data,
-                                      struct ext_workspace_manager_v1 *manager)
+static void mgr_finished(void *data, struct ext_workspace_manager_v1 *m)
 {
-    (void)manager;
-    struct workspace_manager *wm = (struct workspace_manager *)data;
-    wm->stopped = true;
+    (void)m;
+    struct workspace_manager *wm = data;
+    wm->finished = true;
     log_info("ext_workspace_manager_v1 finished");
 }
 
-static void workspace_manager_workspace(void *data,
-                                       struct ext_workspace_manager_v1 *manager,
-                                       struct ext_workspace_handle_v1 *workspace)
-{
-    (void)data;
-    (void)manager;
-    (void)workspace;
-}
-
-static void workspace_manager_done(void *data,
-                                  struct ext_workspace_manager_v1 *manager)
-{
-    (void)data;
-    (void)manager;
-}
-
-static const struct ext_workspace_manager_v1_listener workspace_manager_listener = {
-    .workspace_group = workspace_manager_workspace_group,
-    .workspace = workspace_manager_workspace,
-    .done = workspace_manager_done,
-    .finished = workspace_manager_finished,
+static const struct ext_workspace_manager_v1_listener mgr_listener = {
+    .workspace_group = mgr_workspace_group,
+    .workspace = mgr_workspace,
+    .done = mgr_done,
+    .finished = mgr_finished,
 };
+
+/* ---- public -------------------------------------------------------------- */
 
 struct workspace_manager *workspaces_create(struct wayland_ctx *ctx)
 {
@@ -235,34 +255,78 @@ struct workspace_manager *workspaces_create(struct wayland_ctx *ctx)
     struct workspace_manager *wm = calloc(1, sizeof(*wm));
     if (!wm) return NULL;
     wm->ctx = ctx;
-    wm->mgr = NULL;
     wl_list_init(&wm->groups);
-    wm->stopped = false;
+    wl_list_init(&wm->workspaces);
     return wm;
 }
 
 void workspaces_bind(struct workspace_manager *wm)
 {
-    if (!wm || !wm->ctx || !wm->ctx->workspace_manager) return;
+    if (!wm || wm->mgr || !wm->ctx || !wm->ctx->workspace_manager) return;
     wm->mgr = wm->ctx->workspace_manager;
-    ext_workspace_manager_v1_add_listener(wm->mgr, &workspace_manager_listener, wm);
+    ext_workspace_manager_v1_add_listener(wm->mgr, &mgr_listener, wm);
+}
+
+void workspaces_set_changed_cb(struct workspace_manager *wm, workspaces_changed_cb cb, void *userdata)
+{
+    if (!wm) return;
+    wm->cb = cb;
+    wm->cb_data = userdata;
+}
+
+static int ws_cmp(const struct workspace *a, const struct workspace *b)
+{
+    size_t n = a->n_coord < b->n_coord ? a->n_coord : b->n_coord;
+    for (size_t i = 0; i < n; i++) {
+        if (a->coord[i] != b->coord[i]) return a->coord[i] < b->coord[i] ? -1 : 1;
+    }
+    return strcmp(a->name, b->name);
+}
+
+size_t workspaces_snapshot(struct workspace_manager *wm, struct wl_output *output,
+                           struct workspace_info *out, size_t max)
+{
+    if (!wm || !out || max == 0) return 0;
+    const struct workspace *sel[64];
+    size_t n = 0;
+    struct workspace *ws;
+    wl_list_for_each(ws, &wm->workspaces, link) {
+        if (output && ws->group) {
+            bool on = false;
+            for (size_t i = 0; i < ws->group->n_outputs; i++) {
+                if (ws->group->outputs[i] == output) { on = true; break; }
+            }
+            if (!on) continue;
+        }
+        if (n >= sizeof(sel) / sizeof(sel[0]) || n >= max) break;
+        /* insertion sort: lists are tiny */
+        size_t i = n++;
+        while (i > 0 && ws_cmp(sel[i - 1], ws) > 0) {
+            sel[i] = sel[i - 1];
+            i--;
+        }
+        sel[i] = ws;
+    }
+    for (size_t i = 0; i < n; i++) {
+        snprintf(out[i].name, sizeof(out[i].name), "%s", sel[i]->name);
+        out[i].active = sel[i]->state & EXT_WORKSPACE_HANDLE_V1_STATE_ACTIVE;
+        out[i].urgent = sel[i]->state & EXT_WORKSPACE_HANDLE_V1_STATE_URGENT;
+        out[i].hidden = sel[i]->state & EXT_WORKSPACE_HANDLE_V1_STATE_HIDDEN;
+    }
+    return n;
 }
 
 void workspaces_destroy(struct workspace_manager *wm)
 {
     if (!wm) return;
-    struct workspace_group *wg, *wgtmp;
-    wl_list_for_each_safe(wg, wgtmp, &wm->groups, link) {
-        struct workspace *ws, *wstmp;
-        wl_list_for_each_safe(ws, wstmp, &wg->workspaces, link) {
-            wl_list_remove(&ws->link);
-            if (ws->handle) ext_workspace_handle_v1_destroy(ws->handle);
-            free(ws);
-        }
-        wl_list_remove(&wg->link);
-        if (wg->handle) ext_workspace_group_handle_v1_destroy(wg->handle);
-        free(wg);
+    struct workspace *ws, *wtmp;
+    wl_list_for_each_safe(ws, wtmp, &wm->workspaces, link) {
+        ws_free(ws);
     }
-    wm->mgr = NULL;
+    struct workspace_group *g, *gtmp;
+    wl_list_for_each_safe(g, gtmp, &wm->groups, link) {
+        grp_free(wm, g);
+    }
+    /* the manager proxy itself is owned by wayland_ctx */
     free(wm);
 }
