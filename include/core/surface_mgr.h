@@ -17,11 +17,6 @@ struct layer_surface {
     uint32_t anchor;
     int32_t exclusive_zone;
     struct wayland_ctx *ctx;
-    struct wl_buffer *bar_buf;
-    void *bar_data;
-    size_t bar_size;
-    int bar_fd;
-    int bar_stride;
     struct wl_list link;
 };
 

@@ -91,37 +91,10 @@ static void layer_surface_configure(void *data,
         if (!lsurf->surf) return;
         int w = (width > 0) ? (int)width : ((lsurf->out && lsurf->out->w > 0) ? lsurf->out->w : 0);
         int h = (height > 0) ? (int)height : BAR_HEIGHT;
-        if (w <= 0) w = 0;
-        if (h <= 0) h = BAR_HEIGHT;
+        if (w < 0) w = 0;
+        if (h < 0) h = 0;
         lsurf->configured_w = w;
         lsurf->configured_h = h;
-        if (lsurf->ctx && lsurf->ctx->shm && w > 0 && h > 0 && lsurf->bar_buf == NULL) {
-            char name[] = "/emanc-shm-XXXXXX";
-            int fd = mkstemp(name);
-            if (fd >= 0) {
-                unlink(name);
-                lsurf->bar_stride = w*4;
-                lsurf->bar_size = lsurf->bar_stride * h;
-                ftruncate(fd, lsurf->bar_size);
-                void *data = mmap(NULL, lsurf->bar_size, PROT_READ|PROT_WRITE, MAP_SHARED, fd, 0);
-                if (data && data != MAP_FAILED) {
-                    uint32_t *p = (uint32_t*)data;
-                    for (int i = 0; i < w*h; i++) p[i] = 0xFF1F1F1F;
-                    struct wl_shm_pool *pool = wl_shm_create_pool(lsurf->ctx->shm, fd, lsurf->bar_size);
-                    if (pool) {
-                        lsurf->bar_buf = wl_shm_pool_create_buffer(pool, 0, w, h, lsurf->bar_stride, WL_SHM_FORMAT_ARGB8888);
-                        wl_shm_pool_destroy(pool);
-                    }
-                    if (lsurf->bar_buf) {
-                        wl_surface_attach(lsurf->surf, lsurf->bar_buf, 0, 0);
-                        wl_surface_damage_buffer(lsurf->surf, 0, 0, w, h);
-                        wl_surface_commit(lsurf->surf);
-                    }
-                    munmap(data, lsurf->bar_size);
-                }
-                close(fd);
-            }
-        }
     }
 }
 
@@ -163,10 +136,7 @@ void surface_mgr_fini(struct surface_mgr *mgr)
             wl_surface_destroy(lsurf->surf);
             lsurf->surf = NULL;
         }
-        if (lsurf->bar_buf) { wl_buffer_destroy(lsurf->bar_buf); lsurf->bar_buf = NULL; }
-        if (lsurf->bar_data && lsurf->bar_data != MAP_FAILED) { munmap(lsurf->bar_data, lsurf->bar_size); lsurf->bar_data = NULL; }
-        if (lsurf->bar_fd >= 0) { close(lsurf->bar_fd); lsurf->bar_fd = -1; }
-        lsurf->bar_size = 0; lsurf->bar_stride = 0;
+
         wl_list_remove(&lsurf->link);
         free(lsurf);
     }
