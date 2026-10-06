@@ -3,7 +3,7 @@
 
 #include <stdbool.h>
 
-#define BAR_MAX_MODULES 12
+#define BAR_MAX_MODULES 16
 #define BAR_MODULE_NAME 24
 
 struct color_rgba {

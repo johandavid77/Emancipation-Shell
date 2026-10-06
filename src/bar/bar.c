@@ -113,7 +113,7 @@ static double w_workspaces(struct draw_env *e, double x, int draw)
     return cx - x;
 }
 
-static double w_time(struct draw_env *e, double x, int draw, const char *fmt, double alpha)
+static double w_time(struct draw_env *e, double x, int draw, const char *fmt, double alpha, enum bar_hit_kind hit)
 {
     char buf[128];
     time_t now = time(NULL);
@@ -131,16 +131,43 @@ static double w_time(struct draw_env *e, double x, int draw, const char *fmt, do
 static double w_launcher(struct draw_env *e, double x, int draw)
 {
     bool vis = e->ctx->launcher && launcher_is_visible(e->ctx->launcher);
-    const char *txt = vis ? "▾" : "▸";
+    const char *txt = vis ? "v" : ">";
     double tw = text_width(e->text, txt);
     if (draw) {
         set_rgba(e->cr, e->th->foreground, 0.95);
         text_draw(e, e->text, txt, x);
-        add_hit(e, x, x + tw, BAR_HIT_LAUNCHER, NULL);
+        add_hit(e, x - 4, x + tw + 4, BAR_HIT_LAUNCHER, NULL);
     }
     return tw;
 }
 
+static double w_volume(struct draw_env *e, double x, int draw)
+{
+    const char *txt = "VOL";
+    double tw = text_width(e->small, txt);
+    if (draw) {
+        set_rgba(e->cr, e->th->on_surface_variant, 1.0);
+        text_draw(e, e->small, txt, x);
+    }
+    return tw;
+}
+
+static double w_network(struct draw_env *e, double x, int draw)
+{
+    const char *txt = "NET";
+    double tw = text_width(e->small, txt);
+    if (draw) {
+        set_rgba(e->cr, e->th->on_surface_variant, 1.0);
+        text_draw(e, e->small, txt, x);
+    }
+    return tw;
+}
+
+static double w_tray(struct draw_env *e, double x, int draw)
+{
+    (void)draw;
+    return 0; /* not implemented */
+}
 /* "LABEL value": label dimmed like Noctalia's on_surface_variant icons */
 static double w_metric(struct draw_env *e, double x, int draw, const char *label, int pct, const char *suffix)
 {
@@ -165,13 +192,16 @@ static double widget(struct draw_env *e, const char *name, double x, int draw)
     const struct sysinfo_state *s = e->ctx->sys;
     if (strcmp(name, "launcher") == 0) return w_launcher(e, x, draw);
     if (strcmp(name, "workspaces") == 0) return w_workspaces(e, x, draw);
-    if (strcmp(name, "clock") == 0) return w_time(e, x, draw, c->bar.clock_format, 1.0);
-    if (strcmp(name, "date") == 0) return w_time(e, x, draw, c->bar.date_format, 0.8);
+    if (strcmp(name, "clock") == 0) return w_time(e, x, draw, c->bar.clock_format, 1.0, BAR_HIT_CLOCK);
+    if (strcmp(name, "date") == 0) return w_time(e, x, draw, c->bar.date_format, 0.8, BAR_HIT_DATE);
     if (!s) return 0;
     if (strcmp(name, "cpu") == 0) return w_metric(e, x, draw, "CPU", s->cpu_pct, NULL);
     if (strcmp(name, "ram") == 0) return w_metric(e, x, draw, "RAM", s->ram_pct, NULL);
     if (strcmp(name, "battery") == 0)
         return w_metric(e, x, draw, "BAT", s->bat_pct, s->bat_charging ? "+" : NULL);
+    if (strcmp(name, "volume") == 0) return w_volume(e, x, draw);
+    if (strcmp(name, "network") == 0) return w_network(e, x, draw);
+    if (strcmp(name, "tray") == 0) return w_tray(e, x, draw);
     return 0; /* unknown module: ignored */
 }
 

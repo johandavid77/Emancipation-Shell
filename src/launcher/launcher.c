@@ -55,14 +55,14 @@ void launcher_show(struct launcher *l)
     l->visible = true;
     l->query[0] = '\0';
     l->last_count = 0;
-    log_info("launcher shown");
+    log_info("launcher shown (visible=%d)", l->visible);
 }
 
 void launcher_hide(struct launcher *l)
 {
     if (!l) return;
     l->visible = false;
-    log_info("launcher hidden");
+    log_info("launcher hidden (visible=%d)", l->visible);
 }
 
 void launcher_toggle(struct launcher *l)

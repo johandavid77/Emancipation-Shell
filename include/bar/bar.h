@@ -15,6 +15,8 @@ struct launcher;
 enum bar_hit_kind {
     BAR_HIT_WORKSPACE = 1,
     BAR_HIT_LAUNCHER,
+    BAR_HIT_CLOCK,
+    BAR_HIT_DATE,
 };
 
 /* Clickable horizontal span, in logical coordinates. */
