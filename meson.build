@@ -64,8 +64,10 @@ xdg_c = custom_target('xdg-shell-client-protocol.c',
 )
 
 extra_protos = []
+
 foreach proto : [['cursor-shape-v1', 'protocols/cursor-shape-v1.xml'],
-                 ['tablet-unstable-v2', 'protocols/tablet-unstable-v2.xml']]
+                 ['tablet-unstable-v2', 'protocols/tablet-unstable-v2.xml'],
+                 ['ext-foreign-toplevel-list-v1', 'protocols/ext-foreign-toplevel-list-v1.xml']]
   extra_protos += custom_target(proto[0] + '-client-protocol.h',
     input: files(proto[1]), output: proto[0] + '-client-protocol.h',
     command: [sc, 'client-header', '@INPUT@', '@OUTPUT@'])

@@ -169,6 +169,17 @@ static double w_tray(struct draw_env *e, double x, int draw)
     return 0; /* not implemented */
 }
 
+static double w_taskbar(struct draw_env *e, double x, int draw)
+{
+    const char *txt = "win";
+    double tw = text_width(e->small, txt);
+    if (draw) {
+        set_rgba(e->cr, e->th->on_surface_variant, 1.0);
+        text_draw(e, e->small, txt, x);
+    }
+    return tw;
+}
+
 static double w_kbd(struct draw_env *e, double x, int draw)
 {
     const char *txt = "US";
@@ -214,7 +225,8 @@ static double widget(struct draw_env *e, const char *name, double x, int draw)
     if (strcmp(name, "volume") == 0) return w_volume(e, x, draw);
     if (strcmp(name, "network") == 0) return w_network(e, x, draw);
     if (strcmp(name, "tray") == 0) return w_tray(e, x, draw);
-    if (strcmp(name, "kbd") == 0 || strcmp(name, "keyboard") == 0) return w_kbd(e, x, draw);
+    if (strcmp(name, "kbd") == 0 || strcmp(name, "keyboard") == 0 || strcmp(name, "keyboard_layout") == 0) return w_kbd(e, x, draw);
+    if (strcmp(name, "taskbar") == 0) return w_taskbar(e, x, draw);
     return 0; /* unknown module: ignored */
 }
 
