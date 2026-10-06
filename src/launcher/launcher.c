@@ -69,7 +69,7 @@ void launcher_toggle(struct launcher *l)
 {
     if (!l) return;
     if (l->visible) launcher_hide(l);
-    else launcher_show(l);
+    else { launcher_show(l); launcher_spawn("true"); }
 }
 
 bool launcher_is_visible(struct launcher *l)

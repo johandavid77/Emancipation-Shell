@@ -342,6 +342,7 @@ void surface_mgr_pointer_click(struct surface_mgr *mgr, struct wl_surface *surf,
         if (hit->kind == BAR_HIT_LAUNCHER && mgr->launcher) { launcher_toggle(mgr->launcher); surface_mgr_mark_dirty_all(mgr); log_info("launcher toggled"); }
         if (hit->kind == BAR_HIT_CLOCK) { log_info("clock clicked"); }
         if (hit->kind == BAR_HIT_DATE) { log_info("date clicked"); }
+        if (hit->kind == BAR_HIT_KBD) { log_info("kbd clicked"); }
     }
 }
 

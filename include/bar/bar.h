@@ -17,6 +17,7 @@ enum bar_hit_kind {
     BAR_HIT_LAUNCHER,
     BAR_HIT_CLOCK,
     BAR_HIT_DATE,
+    BAR_HIT_KBD,
 };
 
 /* Clickable horizontal span, in logical coordinates. */
