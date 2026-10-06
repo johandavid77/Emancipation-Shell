@@ -4,6 +4,8 @@
 #include "core/output.h"
 #include "bar/bar.h"
 #include "config/config.h"
+#include "bar/workspaces.h"
+#include "launcher/launcher.h"
 #include "util/log.h"
 #include "zwlr-layer-shell-v1-client-protocol.h"
 
@@ -112,7 +114,15 @@ static void layer_draw(struct layer_surface *l)
         cairo_format_stride_for_width(CAIRO_FORMAT_ARGB32, pw));
     cairo_t *cr = cairo_create(cs);
     cairo_scale(cr, scale, scale);
-    bar_draw(cr, l->width, l->height, l->mgr->cfg, l->mgr->wm, l->out ? l->out->wl : NULL);
+    struct bar_ctx bctx = {
+        .cfg = l->mgr->cfg,
+        .wm = l->mgr->wm,
+        .sys = l->mgr->sys,
+        .launcher = l->mgr->launcher,
+        .output = l->out ? l->out->wl : NULL,
+        .hover_x = l->hover_x,
+    };
+    bar_draw(cr, l->width, l->height, &bctx, &l->hits);
     cairo_destroy(cr);
     cairo_surface_flush(cs);
     cairo_surface_destroy(cs);
@@ -219,6 +229,7 @@ void surface_mgr_on_output_added(struct surface_mgr *mgr, struct output *out)
     if (!l) return;
     l->mgr = mgr;
     l->out = out;
+    l->hover_x = -1;
     l->surf = wl_compositor_create_surface(mgr->ctx->compositor);
     l->ls = zwlr_layer_shell_v1_get_layer_surface(mgr->ctx->layer_shell, l->surf, out->wl,
                                                   ZWLR_LAYER_SHELL_V1_LAYER_TOP, NAMESPACE);
@@ -279,4 +290,76 @@ void surface_mgr_request_redraw(struct surface_mgr *mgr)
         l->dirty = true;
         layer_draw(l);
     }
+}
+
+void surface_mgr_set_sysinfo(struct surface_mgr *mgr, const struct sysinfo_state *sys)
+{
+    if (mgr) mgr->sys = sys;
+}
+
+static struct layer_surface *find_by_surface(struct surface_mgr *mgr, struct wl_surface *surf)
+{
+    struct layer_surface *l;
+    wl_list_for_each(l, &mgr->layers, link) {
+        if (l->surf == surf) return l;
+    }
+    return NULL;
+}
+
+bool surface_mgr_pointer_motion(struct surface_mgr *mgr, struct wl_surface *surf, double x)
+{
+    struct layer_surface *l = find_by_surface(mgr, surf);
+    if (!l) return false;
+    const struct bar_hit *before = bar_hit_at(&l->hits, l->hover_x);
+    const struct bar_hit *now = bar_hit_at(&l->hits, x);
+    l->hover_x = x;
+    if (before != now) { /* only repaint when the hovered item changes */
+        l->dirty = true;
+        layer_draw(l);
+    }
+    return now != NULL;
+}
+
+void surface_mgr_pointer_leave(struct surface_mgr *mgr, struct wl_surface *surf)
+{
+    struct layer_surface *l = find_by_surface(mgr, surf);
+    if (!l) return;
+    bool had = bar_hit_at(&l->hits, l->hover_x) != NULL;
+    l->hover_x = -1;
+    if (had) {
+        l->dirty = true;
+        layer_draw(l);
+    }
+}
+
+void surface_mgr_pointer_click(struct surface_mgr *mgr, struct wl_surface *surf, double x)
+{
+    struct layer_surface *l = find_by_surface(mgr, surf);
+    if (!l) return;
+    const struct bar_hit *hit = bar_hit_at(&l->hits, x);
+    if (hit) {
+        if (hit->kind == BAR_HIT_WORKSPACE) workspaces_activate(mgr->wm, hit->ref);
+        if (hit->kind == BAR_HIT_LAUNCHER && mgr->launcher) launcher_toggle(mgr->launcher);
+    }
+}
+
+void surface_mgr_pointer_scroll(struct surface_mgr *mgr, struct wl_surface *surf, int dir)
+{
+    struct layer_surface *l = find_by_surface(mgr, surf);
+    if (!l) return;
+    workspaces_step(mgr->wm, l->out ? l->out->wl : NULL, dir);
+}
+
+void surface_mgr_mark_dirty_all(struct surface_mgr *mgr)
+{
+    struct layer_surface *l;
+    if (!mgr) return;
+    wl_list_for_each(l, &mgr->layers, link) {
+        l->dirty = true;
+        layer_draw(l);
+    }
+}
+void surface_mgr_set_launcher(struct surface_mgr *mgr, struct launcher *launcher)
+{
+    if (mgr) mgr->launcher = launcher;
 }

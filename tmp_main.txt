@@ -1,5 +1,3 @@
-static struct sysinfo_state sys;
-static int last_cpu=-2,last_ram=-2,last_bat=-2,last_chg=-1;
 #define _GNU_SOURCE
 #include <stdio.h>
 #include <stdlib.h>
@@ -16,7 +14,6 @@ static int last_cpu=-2,last_ram=-2,last_bat=-2,last_chg=-1;
 #include "core/wayland.h"
 #include "core/output.h"
 #include "core/registry.h"
-#include "core/seat.h"
 #include "core/surface_mgr.h"
 #include "util/log.h"
 #include "config/config.h"
@@ -24,6 +21,7 @@ static int last_cpu=-2,last_ram=-2,last_bat=-2,last_chg=-1;
 #include "config/watcher.h"
 #include "bar/workspaces.h"
 #include "bar/sysinfo.h"
+#include "core/seat.h"
 #include "launcher/launcher.h"
 #include "dock/dock.h"
 #include "control/control_center.h"
@@ -68,8 +66,8 @@ static void arm_clock(int tfd)
     struct timespec now;
     clock_gettime(CLOCK_REALTIME, &now);
     struct itimerspec its = {
-        .it_value = { .tv_sec = now.tv_sec + 1, .tv_nsec = 0 },
-        .it_interval = { .tv_sec = 1, .tv_nsec = 0 },
+        .it_value = { .tv_sec = now.tv_sec - (now.tv_sec % 60) + 60, .tv_nsec = 0 },
+        .it_interval = { .tv_sec = 60, .tv_nsec = 0 },
     };
     timerfd_settime(tfd, TFD_TIMER_ABSTIME | TFD_TIMER_CANCEL_ON_SET, &its, NULL);
 }
@@ -131,7 +129,6 @@ int main(int argc, char **argv)
     }
     surface_mgr_set_sources(&mgr, cfg, wm);
 
-    ctx.seat = seat_create(&ctx, &mgr);
     struct registry_state reg_state;
     registry_init(&reg_state, &ctx, &outputs, &mgr);
     registry_bind_globals(&reg_state);
@@ -158,7 +155,6 @@ int main(int argc, char **argv)
     struct output *out_first = wl_list_empty(&outputs) ? NULL
         : wl_container_of(outputs.next, out_first, link);
     struct launcher *launcher = launcher_create(&ctx);
-    surface_mgr_set_launcher(&mgr, launcher);
     struct dock *dock = NULL;
     struct control_center *cc = NULL;
     struct osd *osd = NULL;
@@ -225,11 +221,7 @@ int main(int argc, char **argv)
             if (read(tfd, &exp, sizeof(exp)) < 0 && errno == ECANCELED) {
                 arm_clock(tfd); /* wall clock jumped: realign */
             }
-            bool chg = sysinfo_update(&sys);
-            if (sys.cpu_pct != last_cpu || sys.ram_pct != last_ram || sys.bat_pct != last_bat || (last_chg != (sys.bat_charging?1:0)) || chg) {
-                last_cpu=sys.cpu_pct; last_ram=sys.ram_pct; last_bat=sys.bat_pct; last_chg=sys.bat_charging?1:0;
-                surface_mgr_mark_dirty_all(&mgr);
-            }
+            surface_mgr_request_redraw(&mgr);
         }
         if (fds[FD_CFG].revents & POLLIN) {
             config_watcher_dispatch(cw);

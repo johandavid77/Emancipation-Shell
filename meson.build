@@ -63,6 +63,17 @@ xdg_c = custom_target('xdg-shell-client-protocol.c',
   install: false
 )
 
+extra_protos = []
+foreach proto : [['cursor-shape-v1', 'protocols/cursor-shape-v1.xml'],
+                 ['tablet-unstable-v2', 'protocols/tablet-unstable-v2.xml']]
+  extra_protos += custom_target(proto[0] + '-client-protocol.h',
+    input: files(proto[1]), output: proto[0] + '-client-protocol.h',
+    command: [sc, 'client-header', '@INPUT@', '@OUTPUT@'])
+  extra_protos += custom_target(proto[0] + '-client-protocol.c',
+    input: files(proto[1]), output: proto[0] + '-client-protocol.c',
+    command: [sc, 'private-code', '@INPUT@', '@OUTPUT@'])
+endforeach
+
 gen_inc = include_directories('.')
 
 inc_dirs = include_directories('include')
@@ -78,6 +89,8 @@ srcs = [
   'src/config/watcher.c',
   'src/bar/bar.c',
   'src/bar/workspaces.c',
+  'src/bar/sysinfo.c',
+  'src/core/seat.c',
   'src/launcher/desktop.c',
   'src/launcher/launcher.c',
   'src/dock/dock.c',
@@ -97,6 +110,7 @@ srcs = [
   'src/third_party/tomlc99/toml.c',
   layer_c, layer_h,
   xdg_c, xdg_h,
+  extra_protos,
   ws_c, ws_h,
   sl_c, sl_h
 ]

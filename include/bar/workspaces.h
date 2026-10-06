@@ -10,9 +10,12 @@ struct wayland_ctx;
 
 struct workspace_info {
     char name[64];
+    char id[64];
+    char label[64];
     bool active;
     bool urgent;
     bool hidden;
+    void *ref; /* opaque handle for workspaces_activate() */
 };
 
 typedef void (*workspaces_changed_cb)(void *userdata);
@@ -27,5 +30,12 @@ void workspaces_set_changed_cb(struct workspace_manager *wm, workspaces_changed_
  * coordinates, then name. Returns the number written. */
 size_t workspaces_snapshot(struct workspace_manager *wm, struct wl_output *output,
                            struct workspace_info *out, size_t max);
+
+/* Ask the compositor to activate the workspace (ref from a snapshot).
+ * Safe if the workspace disappeared meanwhile. */
+void workspaces_activate(struct workspace_manager *wm, void *ref);
+/* Activate the previous (dir < 0) or next (dir > 0) workspace on `output`,
+ * without wrapping, like Noctalia's workspace-switch prev/next. */
+void workspaces_step(struct workspace_manager *wm, struct wl_output *output, int dir);
 
 #endif /* EMANCIPATION_WORKSPACES_H */

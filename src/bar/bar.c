@@ -1,14 +1,30 @@
 #include "bar/bar.h"
+#include "bar/sysinfo.h"
 #include "bar/workspaces.h"
+#include "launcher/launcher.h"
 #include "config/config.h"
 #include <pango/pangocairo.h>
 #include <stdio.h>
 #include <string.h>
 #include <time.h>
 
-#define PAD 10.0
-#define PILL_PAD 8.0
-#define PILL_GAP 4.0
+/* Workspace pill proportions follow Noctalia's "regular" style
+ * (workspaces_widget.h/.cpp): active pill 2.2x the base, inactive 1.0x,
+ * 4px gap, label text ~0.8 of body text. */
+#define WS_GAP 4.0
+#define WS_ACTIVE_MUL 2.2
+#define WS_LABEL_PAD 6.0
+#define WS_EMPTY_ALPHA 0.55
+
+struct draw_env {
+    cairo_t *cr;
+    PangoLayout *text;  /* body font */
+    PangoLayout *small; /* workspace labels */
+    const struct bar_ctx *ctx;
+    const struct theme_config *th;
+    int h;
+    struct bar_hits *hits; /* NULL during the measure pass */
+};
 
 static void set_rgba(cairo_t *cr, struct color_rgba c, double alpha_mul)
 {
@@ -27,94 +43,220 @@ static void rounded_rect(cairo_t *cr, double x, double y, double w, double h, do
     cairo_close_path(cr);
 }
 
-/* Returns logical text width; draws only when `draw` is set. */
-static double text_at(cairo_t *cr, PangoLayout *layout, const char *txt,
-                      double x, int bar_h, int draw)
+static double text_width(PangoLayout *l, const char *txt)
 {
     int tw, th;
-    pango_layout_set_text(layout, txt, -1);
-    pango_layout_get_pixel_size(layout, &tw, &th);
+    pango_layout_set_text(l, txt, -1);
+    pango_layout_get_pixel_size(l, &tw, &th);
+    return tw;
+}
+
+static void text_draw(struct draw_env *e, PangoLayout *l, const char *txt, double x)
+{
+    int tw, th;
+    pango_layout_set_text(l, txt, -1);
+    pango_layout_get_pixel_size(l, &tw, &th);
+    cairo_move_to(e->cr, x, (e->h - th) / 2.0);
+    pango_cairo_show_layout(e->cr, l);
+}
+
+static void add_hit(struct draw_env *e, double x0, double x1, enum bar_hit_kind k, void *ref)
+{
+    if (!e->hits || e->hits->n >= BAR_MAX_HITS) return;
+    e->hits->h[e->hits->n++] = (struct bar_hit){ x0, x1, k, ref };
+}
+
+static bool hovered(const struct draw_env *e, double x0, double x1)
+{
+    return e->ctx->hover_x >= x0 && e->ctx->hover_x < x1;
+}
+
+/* ---- widgets: each returns its width; draws only when draw != 0 -------- */
+
+static double w_workspaces(struct draw_env *e, double x, int draw)
+{
+    struct workspace_info ws[32];
+    size_t n = workspaces_snapshot(e->ctx->wm, e->ctx->output, ws, 32);
+    double pill_h = e->h * 0.56;
+    double y = (e->h - pill_h) / 2.0;
+    double cx = x;
+    for (size_t i = 0; i < n; i++) {
+        const char *label = ws[i].label[0] ? ws[i].label : "?";
+        double tw = text_width(e->small, label);
+        double base = pill_h > tw + 2 * WS_LABEL_PAD ? pill_h : tw + 2 * WS_LABEL_PAD;
+        double pw = ws[i].active ? pill_h * WS_ACTIVE_MUL : base;
+        if (pw < tw + 2 * WS_LABEL_PAD) pw = tw + 2 * WS_LABEL_PAD;
+        if (draw) {
+            struct color_rgba fill, ink;
+            double alpha = 1.0;
+            if (ws[i].active) {
+                fill = e->th->primary;
+                ink = e->th->on_primary;
+            } else if (ws[i].urgent) {
+                fill = e->th->error;
+                ink = e->th->on_error;
+            } else {
+                fill = e->th->secondary;
+                ink = e->th->on_secondary;
+                alpha = ws[i].hidden ? WS_EMPTY_ALPHA : 0.8;
+            }
+            if (hovered(e, cx, cx + pw) && !ws[i].active) alpha = 1.0;
+            set_rgba(e->cr, fill, alpha);
+            rounded_rect(e->cr, cx, y, pw, pill_h, pill_h / 2);
+            cairo_fill(e->cr);
+            set_rgba(e->cr, ink, 1.0);
+            text_draw(e, e->small, label, cx + (pw - tw) / 2.0);
+            add_hit(e, cx, cx + pw, BAR_HIT_WORKSPACE, ws[i].ref);
+        }
+        cx += pw + (i + 1 < n ? WS_GAP : 0);
+    }
+    return cx - x;
+}
+
+static double w_time(struct draw_env *e, double x, int draw, const char *fmt, double alpha)
+{
+    char buf[128];
+    time_t now = time(NULL);
+    struct tm tmv;
+    localtime_r(&now, &tmv);
+    if (strftime(buf, sizeof(buf), fmt, &tmv) == 0) buf[0] = '\0';
+    double tw = text_width(e->text, buf);
     if (draw) {
-        cairo_move_to(cr, x, (bar_h - th) / 2.0);
-        pango_cairo_show_layout(cr, layout);
+        set_rgba(e->cr, e->th->foreground, alpha);
+        text_draw(e, e->text, buf, x);
     }
     return tw;
 }
 
-void bar_draw(cairo_t *cr, int w, int h, const struct config *cfg,
-              struct workspace_manager *wm, struct wl_output *output)
+static double w_launcher(struct draw_env *e, double x, int draw)
+{
+    bool vis = e->ctx->launcher && launcher_is_visible(e->ctx->launcher);
+    const char *txt = vis ? "▾" : "▸";
+    double tw = text_width(e->text, txt);
+    if (draw) {
+        set_rgba(e->cr, e->th->foreground, 0.95);
+        text_draw(e, e->text, txt, x);
+        add_hit(e, x, x + tw, BAR_HIT_LAUNCHER, NULL);
+    }
+    return tw;
+}
+
+/* "LABEL value": label dimmed like Noctalia's on_surface_variant icons */
+static double w_metric(struct draw_env *e, double x, int draw, const char *label, int pct, const char *suffix)
+{
+    if (pct < 0) return 0;
+    char val[32];
+    snprintf(val, sizeof(val), "%d%%%s", pct, suffix ? suffix : "");
+    double lw = text_width(e->small, label);
+    double gap = 5;
+    double vw = text_width(e->text, val);
+    if (draw) {
+        set_rgba(e->cr, e->th->on_surface_variant, 1.0);
+        text_draw(e, e->small, label, x);
+        set_rgba(e->cr, e->th->foreground, 1.0);
+        text_draw(e, e->text, val, x + lw + gap);
+    }
+    return lw + gap + vw;
+}
+
+static double widget(struct draw_env *e, const char *name, double x, int draw)
+{
+    const struct config *c = e->ctx->cfg;
+    const struct sysinfo_state *s = e->ctx->sys;
+    if (strcmp(name, "launcher") == 0) return w_launcher(e, x, draw);
+    if (strcmp(name, "workspaces") == 0) return w_workspaces(e, x, draw);
+    if (strcmp(name, "clock") == 0) return w_time(e, x, draw, c->bar.clock_format, 1.0);
+    if (strcmp(name, "date") == 0) return w_time(e, x, draw, c->bar.date_format, 0.8);
+    if (!s) return 0;
+    if (strcmp(name, "cpu") == 0) return w_metric(e, x, draw, "CPU", s->cpu_pct, NULL);
+    if (strcmp(name, "ram") == 0) return w_metric(e, x, draw, "RAM", s->ram_pct, NULL);
+    if (strcmp(name, "battery") == 0)
+        return w_metric(e, x, draw, "BAT", s->bat_pct, s->bat_charging ? "+" : NULL);
+    return 0; /* unknown module: ignored */
+}
+
+/* Lay out a section starting at x; returns total width. */
+static double section(struct draw_env *e, enum bar_section sec, double x, int draw)
+{
+    const struct bar_config *b = &e->ctx->cfg->bar;
+    double cx = x;
+    bool first = true;
+    for (int i = 0; i < b->n_modules[sec]; i++) {
+        double probe = widget(e, b->modules[sec][i], 0, 0);
+        if (probe <= 0) continue; /* hidden widgets take no spacing */
+        if (!first) cx += b->spacing;
+        widget(e, b->modules[sec][i], cx, draw);
+        cx += probe;
+        first = false;
+    }
+    return cx - x;
+}
+
+static PangoLayout *make_layout(cairo_t *cr, const char *family, double size, PangoWeight weight)
+{
+    PangoLayout *l = pango_cairo_create_layout(cr);
+    PangoFontDescription *fd = pango_font_description_new();
+    pango_font_description_set_family(fd, family);
+    pango_font_description_set_size(fd, (int)(size * PANGO_SCALE));
+    pango_font_description_set_weight(fd, weight);
+    pango_layout_set_font_description(l, fd);
+    pango_font_description_free(fd);
+    return l;
+}
+
+void bar_draw(cairo_t *cr, int w, int h, const struct bar_ctx *ctx, struct bar_hits *hits)
 {
     struct config def;
-    if (!cfg) {
+    struct bar_ctx local = *ctx;
+    if (!local.cfg) {
         config_defaults(&def);
-        cfg = &def;
+        local.cfg = &def;
     }
-    const struct color_rgba bg = cfg->theme.background;
-    const struct color_rgba fg = cfg->theme.foreground;
+    const struct config *cfg = local.cfg;
+    if (hits) hits->n = 0;
 
     cairo_save(cr);
     cairo_set_operator(cr, CAIRO_OPERATOR_SOURCE);
-    set_rgba(cr, bg, 1.0);
+    set_rgba(cr, cfg->theme.background, 1.0);
     cairo_paint(cr);
     cairo_restore(cr);
 
-    PangoLayout *layout = pango_cairo_create_layout(cr);
-    char fontdesc[300];
-    snprintf(fontdesc, sizeof(fontdesc), "%s %d",
-             cfg->font.family[0] ? cfg->font.family : "Sans",
-             cfg->font.size > 0 ? cfg->font.size : 12);
-    PangoFontDescription *fd = pango_font_description_from_string(fontdesc);
-    pango_layout_set_font_description(layout, fd);
-    pango_font_description_free(fd);
+    const char *family = cfg->font.family[0] ? cfg->font.family : "sans-serif";
+    double size = cfg->font.size > 0 ? cfg->font.size : 11;
+    struct draw_env e = {
+        .cr = cr,
+        .text = make_layout(cr, family, size, PANGO_WEIGHT_MEDIUM), /* Noctalia: weight 500 */
+        .small = make_layout(cr, family, size * 0.8, PANGO_WEIGHT_BOLD),
+        .ctx = &local,
+        .th = &cfg->theme,
+        .h = h,
+        .hits = NULL,
+    };
 
-    /* left: workspaces */
-    struct workspace_info ws[32];
-    size_t n = workspaces_snapshot(wm, output, ws, 32);
-    double x = PAD;
-    double pill_h = h - 8.0;
-    if (pill_h < 4) pill_h = h;
-    for (size_t i = 0; i < n; i++) {
-        char label[64];
-        if (ws[i].name[0]) snprintf(label, sizeof(label), "%s", ws[i].name);
-        else snprintf(label, sizeof(label), "%zu", i + 1);
-        double tw = text_at(cr, layout, label, 0, h, 0);
-        double pw = tw + 2 * PILL_PAD;
-        if (pw < pill_h) pw = pill_h;
-        if (ws[i].active) {
-            set_rgba(cr, fg, 1.0);
-            rounded_rect(cr, x, (h - pill_h) / 2.0, pw, pill_h, 6);
-            cairo_fill(cr);
-            set_rgba(cr, bg, 1.0);
-        } else if (ws[i].urgent) {
-            cairo_set_source_rgba(cr, 0.85, 0.30, 0.30, 1.0);
-            rounded_rect(cr, x, (h - pill_h) / 2.0, pw, pill_h, 6);
-            cairo_fill(cr);
-            set_rgba(cr, fg, 1.0);
-        } else {
-            set_rgba(cr, fg, ws[i].hidden ? 0.45 : 0.75);
-        }
-        text_at(cr, layout, label, x + (pw - tw) / 2.0, h, 1);
-        x += pw + PILL_GAP;
-    }
+    double pad = cfg->bar.padding;
+    double sw = section(&e, BAR_START, 0, 0);
+    double cw = section(&e, BAR_CENTER, 0, 0);
+    double ew = section(&e, BAR_END, 0, 0);
 
-    /* center: clock, right: date */
-    time_t now = time(NULL);
-    struct tm tmv;
-    localtime_r(&now, &tmv);
-    char clock_s[32], date_s[64];
-    strftime(clock_s, sizeof(clock_s), "%H:%M", &tmv);
-    strftime(date_s, sizeof(date_s), "%a %d %b", &tmv);
-
-    set_rgba(cr, fg, 1.0);
-    double cw = text_at(cr, layout, clock_s, 0, h, 0);
+    double sx = pad;
+    double ex = w - pad - ew;
     double cx = (w - cw) / 2.0;
-    if (cx < x) cx = x; /* never overlap the workspace list */
-    text_at(cr, layout, clock_s, cx, h, 1);
+    if (cx < sx + sw + cfg->bar.spacing) cx = sx + sw + cfg->bar.spacing;
 
-    set_rgba(cr, fg, 0.75);
-    double dw = text_at(cr, layout, date_s, 0, h, 0);
-    double dx = w - PAD - dw;
-    if (dx > cx + cw + PAD) text_at(cr, layout, date_s, dx, h, 1);
+    e.hits = hits;
+    section(&e, BAR_START, sx, 1);
+    section(&e, BAR_CENTER, cx, 1);
+    if (ex >= cx + cw + cfg->bar.spacing) section(&e, BAR_END, ex, 1); /* drop when it would overlap */
 
-    g_object_unref(layout);
+    g_object_unref(e.text);
+    g_object_unref(e.small);
+}
+
+const struct bar_hit *bar_hit_at(const struct bar_hits *hits, double x)
+{
+    if (!hits) return NULL;
+    for (int i = 0; i < hits->n; i++) {
+        if (x >= hits->h[i].x0 && x < hits->h[i].x1) return &hits->h[i];
+    }
+    return NULL;
 }

@@ -9,6 +9,7 @@
 #include <sys/types.h>
 #include <pwd.h>
 #include <stdarg.h>
+#include <stddef.h>
 
 static void set_err(char *errbuf, size_t errbufsz, const char *fmt, ...)
 {
@@ -115,24 +116,61 @@ bool config_load_from_file(const char *path, struct config *out, char *errbuf, s
     if (bar) {
         get_int(bar, "height", &tmp.bar.height);
         get_bool(bar, "visible", &tmp.bar.visible);
+        get_int(bar, "padding", &tmp.bar.padding);
+        get_int(bar, "spacing", &tmp.bar.spacing);
+        get_string(bar, "clock_format", tmp.bar.clock_format, sizeof(tmp.bar.clock_format));
+        get_string(bar, "date_format", tmp.bar.date_format, sizeof(tmp.bar.date_format));
+        static const char *sections[BAR_SECTIONS] = { "start", "center", "end" };
+        for (int s = 0; s < BAR_SECTIONS; s++) {
+            toml_array_t *arr = toml_array_in(bar, sections[s]);
+            if (!arr) continue;
+            tmp.bar.n_modules[s] = 0;
+            memset(tmp.bar.modules[s], 0, sizeof(tmp.bar.modules[s]));
+            int n = toml_array_nelem(arr);
+            for (int i = 0; i < n && tmp.bar.n_modules[s] < BAR_MAX_MODULES; i++) {
+                toml_datum_t d = toml_string_at(arr, i);
+                if (!d.ok) continue;
+                strncpy(tmp.bar.modules[s][tmp.bar.n_modules[s]++], d.u.s, BAR_MODULE_NAME - 1);
+                free(d.u.s);
+            }
+        }
+        if (tmp.bar.height < 16) tmp.bar.height = 16;
+        if (tmp.bar.height > 200) tmp.bar.height = 200;
     }
     toml_table_t *theme = toml_table_in(tbl, "theme");
     if (theme) {
-        toml_table_t *bg = toml_table_in(theme, "background");
-        if (bg) {
-            double v;
-            if (get_double(bg, "r", &v)) tmp.theme.background.r = (float)v;
-            if (get_double(bg, "g", &v)) tmp.theme.background.g = (float)v;
-            if (get_double(bg, "b", &v)) tmp.theme.background.b = (float)v;
-            if (get_double(bg, "a", &v)) tmp.theme.background.a = (float)v;
-        }
-        toml_table_t *fg = toml_table_in(theme, "foreground");
-        if (fg) {
-            double v;
-            if (get_double(fg, "r", &v)) tmp.theme.foreground.r = (float)v;
-            if (get_double(fg, "g", &v)) tmp.theme.foreground.g = (float)v;
-            if (get_double(fg, "b", &v)) tmp.theme.foreground.b = (float)v;
-            if (get_double(fg, "a", &v)) tmp.theme.foreground.a = (float)v;
+        static const struct { const char *key; size_t off; } roles[] = {
+            { "background", offsetof(struct theme_config, background) },
+            { "foreground", offsetof(struct theme_config, foreground) },
+            { "primary", offsetof(struct theme_config, primary) },
+            { "on_primary", offsetof(struct theme_config, on_primary) },
+            { "secondary", offsetof(struct theme_config, secondary) },
+            { "on_secondary", offsetof(struct theme_config, on_secondary) },
+            { "error", offsetof(struct theme_config, error) },
+            { "on_error", offsetof(struct theme_config, on_error) },
+            { "surface_variant", offsetof(struct theme_config, surface_variant) },
+            { "on_surface_variant", offsetof(struct theme_config, on_surface_variant) },
+        };
+        for (size_t i = 0; i < sizeof(roles) / sizeof(roles[0]); i++) {
+            struct color_rgba *c = (struct color_rgba *)((char *)&tmp.theme + roles[i].off);
+            char hex[16];
+            if (get_string(theme, roles[i].key, hex, sizeof(hex))) {
+                if (!color_from_hex(hex, c)) {
+                    set_err(errbuf, errbufsz, "theme.%s: invalid color \"%s\"", roles[i].key, hex);
+                    toml_free(tbl);
+                    return false;
+                }
+                continue;
+            }
+            /* legacy form: [theme.<role>] r/g/b/a floats */
+            toml_table_t *t = toml_table_in(theme, roles[i].key);
+            if (t) {
+                double v;
+                if (get_double(t, "r", &v)) c->r = (float)v;
+                if (get_double(t, "g", &v)) c->g = (float)v;
+                if (get_double(t, "b", &v)) c->b = (float)v;
+                if (get_double(t, "a", &v)) c->a = (float)v;
+            }
         }
     }
     toml_table_t *font = toml_table_in(tbl, "font");

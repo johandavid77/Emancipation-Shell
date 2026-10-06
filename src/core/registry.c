@@ -1,5 +1,6 @@
 #include "core/registry.h"
 #include "core/output.h"
+#include "core/seat.h"
 #include "core/surface_mgr.h"
 #include "bar/workspaces.h"
 #include "util/log.h"

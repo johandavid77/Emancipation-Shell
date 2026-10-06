@@ -20,6 +20,7 @@ struct workspace {
     struct ext_workspace_handle_v1 *handle;
     struct workspace_group *group; /* may be NULL */
     char name[64];
+    char id[64];
     uint32_t coord[2];
     size_t n_coord;
     uint32_t state;
@@ -40,7 +41,10 @@ struct workspace_manager {
 
 static void ws_id(void *data, struct ext_workspace_handle_v1 *h, const char *id)
 {
-    (void)data; (void)h; (void)id;
+    (void)h;
+    struct workspace *ws = data;
+    if (id) snprintf(ws->id, sizeof(ws->id), "%s", id);
+    else ws->id[0] = 0;
 }
 
 static void ws_name(void *data, struct ext_workspace_handle_v1 *h, const char *name)
@@ -283,6 +287,16 @@ static int ws_cmp(const struct workspace *a, const struct workspace *b)
     return strcmp(a->name, b->name);
 }
 
+/* Leading number of a workspace id/name, like Noctalia's label fallback
+ * (workspaces_widget.cpp:1413-1435). Returns 0 when there is none. */
+static unsigned long label_number(const char *s)
+{
+    if (!s) return 0;
+    while (*s == ' ' || *s == '-') s++;
+    if (*s < '0' || *s > '9') return 0;
+    return strtoul(s, NULL, 10);
+}
+
 size_t workspaces_snapshot(struct workspace_manager *wm, struct wl_output *output,
                            struct workspace_info *out, size_t max)
 {
@@ -309,11 +323,48 @@ size_t workspaces_snapshot(struct workspace_manager *wm, struct wl_output *outpu
     }
     for (size_t i = 0; i < n; i++) {
         snprintf(out[i].name, sizeof(out[i].name), "%s", sel[i]->name);
+        snprintf(out[i].id, sizeof(out[i].id), "%s", sel[i]->id);
+        if (sel[i]->name[0]) snprintf(out[i].name, sizeof(out[i].name), "%s", sel[i]->name);
+        else if (sel[i]->id[0]) snprintf(out[i].name, sizeof(out[i].name), "%s", sel[i]->id);
+        else out[i].name[0] = 0;
+        unsigned long num = label_number(sel[i]->name[0] ? sel[i]->name : sel[i]->id);
+        if (sel[i]->name[0]) snprintf(out[i].label, sizeof(out[i].label), "%s", sel[i]->name);
+        else if (num) snprintf(out[i].label, sizeof(out[i].label), "%lu", num);
+        else if (sel[i]->id[0]) snprintf(out[i].label, sizeof(out[i].label), "%s", sel[i]->id);
+        else snprintf(out[i].label, sizeof(out[i].label), "%zu", i + 1);
         out[i].active = sel[i]->state & EXT_WORKSPACE_HANDLE_V1_STATE_ACTIVE;
         out[i].urgent = sel[i]->state & EXT_WORKSPACE_HANDLE_V1_STATE_URGENT;
         out[i].hidden = sel[i]->state & EXT_WORKSPACE_HANDLE_V1_STATE_HIDDEN;
+        out[i].ref = sel[i]->handle;
+    }
+    if (getenv("ESH_WS_DEBUG")) {
+        for (size_t i = 0; i < n; i++) {
+            log_info("ws[%zu] id=%s name=%s active=%d urgent=%d hidden=%d",
+                     i, out[i].id, out[i].name, out[i].active, out[i].urgent, out[i].hidden);
+        }
     }
     return n;
+}
+
+void workspaces_activate(struct workspace_manager *wm, void *ref)
+{
+    if (!wm || !wm->mgr || !ref) return;
+    struct workspace *ws = find_ws(wm, ref);
+    if (!ws) return; /* removed since the snapshot */
+    ext_workspace_handle_v1_activate(ws->handle);
+    ext_workspace_manager_v1_commit(wm->mgr);
+}
+
+void workspaces_step(struct workspace_manager *wm, struct wl_output *output, int dir)
+{
+    struct workspace_info ws[64];
+    size_t n = workspaces_snapshot(wm, output, ws, 64);
+    for (size_t i = 0; i < n; i++) {
+        if (!ws[i].active) continue;
+        if (dir < 0 && i > 0) workspaces_activate(wm, ws[i - 1].ref);
+        if (dir > 0 && i + 1 < n) workspaces_activate(wm, ws[i + 1].ref);
+        return;
+    }
 }
 
 void workspaces_destroy(struct workspace_manager *wm)
