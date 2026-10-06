@@ -132,7 +132,7 @@ static void release_pointer(struct seat_state *s)
 static void seat_caps(void *data, struct wl_seat *seat, uint32_t caps)
 {
     struct seat_state *s = data;
-    bool has = caps & WL_SEAT_CAPABILITY_POINTER;
+    log_info("seat caps: 0x%x", caps); bool has = caps & WL_SEAT_CAPABILITY_POINTER;
     if (has && !s->pointer) {
         s->pointer = wl_seat_get_pointer(seat);
         wl_pointer_add_listener(s->pointer, &pointer_listener, s);

@@ -340,9 +340,12 @@ void surface_mgr_pointer_click(struct surface_mgr *mgr, struct wl_surface *surf,
     if (hit) {
         if (hit->kind == BAR_HIT_WORKSPACE) workspaces_activate(mgr->wm, hit->ref);
         if (hit->kind == BAR_HIT_LAUNCHER && mgr->launcher) { launcher_toggle(mgr->launcher); surface_mgr_mark_dirty_all(mgr); log_info("launcher toggled"); }
-        if (hit->kind == BAR_HIT_CLOCK) { log_info("clock clicked"); }
-        if (hit->kind == BAR_HIT_DATE) { log_info("date clicked"); }
-        if (hit->kind == BAR_HIT_KBD) { log_info("kbd clicked"); }
+        if (hit->kind == BAR_HIT_CLOCK || hit->kind == BAR_HIT_DATE) { 
+            pid_t pid = fork(); if (pid==0){ setsid(); execl("/bin/sh","sh","-c","date",NULL); _exit(0);} 
+        }
+        if (hit->kind == BAR_HIT_KBD) { 
+            pid_t pid = fork(); if (pid==0){ setsid(); execl("/bin/sh","sh","-c","echo 'KBD'",NULL); _exit(0);} 
+        }
     }
 }
 
