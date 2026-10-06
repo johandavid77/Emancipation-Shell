@@ -136,7 +136,7 @@ static double w_launcher(struct draw_env *e, double x, int draw)
     if (draw) {
         set_rgba(e->cr, e->th->foreground, 0.95);
         text_draw(e, e->text, txt, x);
-        add_hit(e, x - 4, x + tw + 4, BAR_HIT_LAUNCHER, NULL);
+        add_hit(e, x - 8, x + tw + 8, BAR_HIT_LAUNCHER, NULL);
     }
     return tw;
 }
