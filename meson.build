@@ -96,6 +96,7 @@ srcs = [
   'src/core/panel.c',
   'src/launcher/panel.c',
   'src/launcher/desktop.c',
+  'src/launcher/icons.c',
   'src/launcher/launcher.c',
   'src/dock/dock.c',
   'src/control/control_center.c',

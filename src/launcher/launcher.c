@@ -1,11 +1,14 @@
 #include "launcher/launcher.h"
 #include "core/wayland.h"
 #include "launcher/desktop.h"
+#include "launcher/icons.h"
 #include "util/log.h"
 #include <stdlib.h>
 #include <string.h>
 #include <unistd.h>
 #include <sys/wait.h>
+
+#define ICON_CACHE_SLOTS 48
 
 struct launcher {
     struct wayland_ctx *ctx;
@@ -14,7 +17,27 @@ struct launcher {
     struct desktop_db db;
     int last_results[32];
     int last_count;
+    /* icon cache: entry index -> decoded surface (lazily filled) */
+    cairo_surface_t *icons[ICON_CACHE_SLOTS];
+    int icon_idx[ICON_CACHE_SLOTS];
+    int icon_n;
 };
+
+cairo_surface_t *launcher_icon_for(struct launcher *l, int idx)
+{
+    if (!l || idx < 0 || idx >= l->db.count) return NULL;
+    for (int i = 0; i < l->icon_n; i++) {
+        if (l->icon_idx[i] == idx) return l->icons[i];
+    }
+    if (l->icon_n >= ICON_CACHE_SLOTS) return NULL; /* cache full: draw text only */
+    const char *name = l->db.entries[idx].icon;
+    cairo_surface_t *s = name[0] ? icon_load_surface(name, 48) : NULL;
+    l->icon_idx[l->icon_n] = idx;
+    l->icons[l->icon_n] = s;
+    l->icon_n++;
+    if (s) log_debug("launcher icon loaded: %s", name);
+    return s;
+}
 
 static void launcher_spawn(const char *cmd)
 {
@@ -58,6 +81,9 @@ struct launcher *launcher_create(struct wayland_ctx *ctx)
 void launcher_destroy(struct launcher *l)
 {
     if (!l) return;
+    for (int i = 0; i < l->icon_n; i++) {
+        if (l->icons[i]) cairo_surface_destroy(l->icons[i]);
+    }
     desktop_db_free(&l->db);
     free(l);
 }

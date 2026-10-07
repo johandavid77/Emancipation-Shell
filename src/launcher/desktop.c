@@ -173,17 +173,52 @@ bool desktop_db_load_from_dir(struct desktop_db *db, const char *dir)
     return true;
 }
 
+static void scan_app_dir(struct desktop_db *db, const char *home, const char *rel)
+{
+    char path[1024];
+    if (home) {
+        snprintf(path, sizeof(path), "%s/%s", home, rel);
+        desktop_db_load_from_dir(db, path);
+    }
+    snprintf(path, sizeof(path), "/usr/%s", rel);
+    desktop_db_load_from_dir(db, path);
+}
+
 bool desktop_db_load_system(struct desktop_db *db)
 {
     if (!db) return false;
     const char *home = getenv("HOME");
-    char path[1024];
-    if (home) {
-        snprintf(path, sizeof(path), "%s/.local/share/applications", home);
-        desktop_db_load_from_dir(db, path);
+
+    /* XDG_DATA_HOME first, then XDG_DATA_DIRS, then the usual defaults. Nightelia
+     * resolves providers through the same XDG dirs, so flatpak/snap entries land
+     * in the launcher without hardcoding each store path. */
+    const char *xdg_home = getenv("XDG_DATA_HOME");
+    if (xdg_home && *xdg_home) desktop_db_load_from_dir(db, xdg_home);
+
+    const char *dirs = getenv("XDG_DATA_DIRS");
+    bool saw_default = false;
+    if (dirs && *dirs) {
+        char buf[2048];
+        strncpy(buf, dirs, sizeof(buf)-1);
+        buf[sizeof(buf)-1] = '\0';
+        for (char *tok = strtok(buf, ":"); tok; tok = strtok(NULL, ":")) {
+            char p[1024];
+            snprintf(p, sizeof(p), "%s/applications", tok);
+            desktop_db_load_from_dir(db, p);
+            if (strcmp(tok, "/usr/local/share") == 0 || strcmp(tok, "/usr/share") == 0)
+                saw_default = true;
+        }
     }
-    desktop_db_load_from_dir(db, "/usr/share/applications");
-    desktop_db_load_from_dir(db, "/usr/local/share/applications");
+    if (!saw_default) {
+        desktop_db_load_from_dir(db, "/usr/local/share/applications");
+        desktop_db_load_from_dir(db, "/usr/share/applications");
+    }
+    if (!xdg_home || !*xdg_home) scan_app_dir(db, home, ".local/share/applications");
+
+    /* flatpak / snap exports, when present */
+    scan_app_dir(db, home, ".local/share/flatpak/exports/share/applications");
+    desktop_db_load_from_dir(db, "/var/lib/flatpak/exports/share/applications");
+    desktop_db_load_from_dir(db, "/var/lib/snapd/desktop/applications");
     return true;
 }
 
