@@ -1,6 +1,7 @@
 #define _GNU_SOURCE
 #include "core/surface_mgr.h"
 #include "core/wayland.h"
+#include "core/panel.h"
 #include "core/output.h"
 #include "bar/bar.h"
 #include "config/config.h"
@@ -186,9 +187,7 @@ static struct layer_surface *find_layer(struct surface_mgr *mgr, struct output *
 
 static void layer_apply_geometry(struct surface_mgr *mgr, struct layer_surface *l)
 {
-    int extra_h = 0;
-    if (mgr->launcher && launcher_is_visible(mgr->launcher)) extra_h = 160;
-    zwlr_layer_surface_v1_set_size(l->ls, 0, (uint32_t)(mgr->bar_height + extra_h));
+    zwlr_layer_surface_v1_set_size(l->ls, 0, (uint32_t)mgr->bar_height);
     zwlr_layer_surface_v1_set_exclusive_zone(l->ls, mgr->bar_height);
 }
 
@@ -308,8 +307,14 @@ static struct layer_surface *find_by_surface(struct surface_mgr *mgr, struct wl_
     return NULL;
 }
 
-bool surface_mgr_pointer_motion(struct surface_mgr *mgr, struct wl_surface *surf, double x)
+bool surface_mgr_pointer_motion(struct surface_mgr *mgr, struct wl_surface *surf, double x, double y)
 {
+    if (mgr->panel && mgr->panel->surf == surf && panel_is_visible(mgr->panel)) {
+        mgr->panel->hover_x = x;
+        mgr->panel->hover_y = y;
+        if (mgr->panel->motion) mgr->panel->motion(mgr->panel, x, y);
+        return true;
+    }
     struct layer_surface *l = find_by_surface(mgr, surf);
     if (!l) return false;
     const struct bar_hit *before = bar_hit_at(&l->hits, l->hover_x);
@@ -324,6 +329,7 @@ bool surface_mgr_pointer_motion(struct surface_mgr *mgr, struct wl_surface *surf
 
 void surface_mgr_pointer_leave(struct surface_mgr *mgr, struct wl_surface *surf)
 {
+    if (mgr->panel && mgr->panel->surf == surf) return;
     struct layer_surface *l = find_by_surface(mgr, surf);
     if (!l) return;
     bool had = bar_hit_at(&l->hits, l->hover_x) != NULL;
@@ -334,14 +340,21 @@ void surface_mgr_pointer_leave(struct surface_mgr *mgr, struct wl_surface *surf)
     }
 }
 
-void surface_mgr_pointer_click(struct surface_mgr *mgr, struct wl_surface *surf, double x)
+void surface_mgr_pointer_click(struct surface_mgr *mgr, struct wl_surface *surf, double x, double y)
 {
+    if (mgr->panel && mgr->panel->surf == surf && panel_is_visible(mgr->panel)) {
+        if (mgr->panel->click) mgr->panel->click(mgr->panel, x, y);
+        return;
+    }
     struct layer_surface *l = find_by_surface(mgr, surf);
     if (!l) return;
     const struct bar_hit *hit = bar_hit_at(&l->hits, x);
     if (hit) {
         if (hit->kind == BAR_HIT_WORKSPACE) workspaces_activate(mgr->wm, hit->ref);
-        if (hit->kind == BAR_HIT_LAUNCHER && mgr->launcher) { launcher_toggle(mgr->launcher); surface_mgr_mark_dirty_all(mgr); log_info("launcher toggled"); }
+        if (hit->kind == BAR_HIT_LAUNCHER) {
+            if (mgr->on_launcher) mgr->on_launcher(mgr->on_launcher_userdata);
+            log_info("launcher toggled");
+        }
         if (hit->kind == BAR_HIT_CLOCK || hit->kind == BAR_HIT_DATE) { 
             pid_t pid = fork(); if (pid==0){ setsid(); execl("/bin/sh","sh","-c","date",NULL); _exit(0);} 
         }
@@ -353,6 +366,7 @@ void surface_mgr_pointer_click(struct surface_mgr *mgr, struct wl_surface *surf,
 
 void surface_mgr_pointer_scroll(struct surface_mgr *mgr, struct wl_surface *surf, int dir)
 {
+    if (mgr->panel && mgr->panel->surf == surf) return;
     struct layer_surface *l = find_by_surface(mgr, surf);
     if (!l) return;
     workspaces_step(mgr->wm, l->out ? l->out->wl : NULL, dir);
@@ -370,4 +384,11 @@ void surface_mgr_mark_dirty_all(struct surface_mgr *mgr)
 void surface_mgr_set_launcher(struct surface_mgr *mgr, struct launcher *launcher)
 {
     if (mgr) mgr->launcher = launcher;
+}
+
+void surface_mgr_set_launcher_toggle(struct surface_mgr *mgr, surface_mgr_launcher_fn fn, void *userdata)
+{
+    if (!mgr) return;
+    mgr->on_launcher = fn;
+    mgr->on_launcher_userdata = userdata;
 }

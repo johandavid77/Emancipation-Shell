@@ -93,6 +93,8 @@ srcs = [
   'src/bar/workspaces.c',
   'src/bar/sysinfo.c',
   'src/core/seat.c',
+  'src/core/panel.c',
+  'src/launcher/panel.c',
   'src/launcher/desktop.c',
   'src/launcher/launcher.c',
   'src/dock/dock.c',
@@ -124,6 +126,7 @@ executable('emancipation-shell',
     wl_client,
     dependency('cairo', required: true),
     dependency('pangocairo', required: true),
+    dependency('xkbcommon', required: true),
   ],
   install: false
 )

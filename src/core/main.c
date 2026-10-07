@@ -25,6 +25,8 @@ static int last_cpu=-2,last_ram=-2,last_bat=-2,last_chg=-1;
 #include "bar/workspaces.h"
 #include "bar/sysinfo.h"
 #include "launcher/launcher.h"
+#include "launcher/panel.h"
+#include "core/panel.h"
 #include "dock/dock.h"
 #include "control/control_center.h"
 #include "osd/osd.h"
@@ -159,6 +161,12 @@ int main(int argc, char **argv)
         : wl_container_of(outputs.next, out_first, link);
     struct launcher *launcher = launcher_create(&ctx);
     surface_mgr_set_launcher(&mgr, launcher);
+    struct launcher_panel *lpanel = launcher_panel_create(&ctx, launcher, &cfg);
+    mgr.panel = launcher_panel_surface(lpanel);
+    mgr.focus_output = out_first;
+    /* keys reach the launcher panel while it is open (search field, Enter, Esc) */
+    if (ctx.seat) seat_set_key_handler(ctx.seat, launcher_panel_key_proxy, lpanel);
+    surface_mgr_set_launcher_toggle(&mgr, launcher_panel_toggle_proxy, lpanel);
     struct dock *dock = NULL;
     struct control_center *cc = NULL;
     struct osd *osd = NULL;
@@ -253,6 +261,7 @@ wl_error:
     if (osd) osd_destroy(osd);
     if (cc) control_center_destroy(cc);
     if (dock) dock_destroy(dock);
+    if (lpanel) launcher_panel_destroy(lpanel);
     if (launcher) launcher_destroy(launcher);
 
 cleanup:

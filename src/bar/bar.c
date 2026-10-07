@@ -61,15 +61,6 @@ static void text_draw(struct draw_env *e, PangoLayout *l, const char *txt, doubl
     pango_cairo_show_layout(e->cr, l);
 }
 
-static void text_draw_at(cairo_t *cr, PangoLayout *l, const char *txt, double x, double y)
-{
-    int tw, th;
-    pango_layout_set_text(l, txt, -1);
-    pango_layout_get_pixel_size(l, &tw, &th);
-    cairo_move_to(cr, x, y - th/2.0);
-    pango_cairo_show_layout(cr, l);
-}
-
 static void add_hit(struct draw_env *e, double x0, double x1, enum bar_hit_kind k, void *ref)
 {
     if (!e->hits || e->hits->n >= BAR_MAX_HITS) return;
@@ -270,45 +261,6 @@ static PangoLayout *make_layout(cairo_t *cr, const char *family, double size, Pa
     return l;
 }
 
-static void draw_launcher_panel(struct draw_env *e, double x)
-{
-    struct launcher *l = e->ctx->launcher;
-    if (!l || !launcher_is_visible(l)) return;
-    int results[32];
-    int count = 0;
-    launcher_get_results(l, results, &count, 32);
-    if (count > 32) count = 32;
-    double item_h = 24.0;
-    double pad = 10.0;
-    double panel_h = pad + count * item_h + pad;
-    if (panel_h > 260.0) panel_h = 260.0;
-    double y = e->h;
-    double w = 340.0;
-    /* align near launcher start */
-    cairo_save(e->cr);
-    /* drop shadow-ish? simple solid bg */
-    set_rgba(e->cr, e->th->background, 1.0);
-    cairo_rectangle(e->cr, x - 4, y, w, panel_h);
-    cairo_fill(e->cr);
-    set_rgba(e->cr, e->th->surface_variant, 0.6);
-    cairo_set_line_width(e->cr, 1.0);
-    cairo_rectangle(e->cr, x - 4 + 0.5, y + 0.5, w - 1.0, panel_h - 1.0);
-    cairo_stroke(e->cr);
-    for (int i = 0; i < count; i++) {
-        int idx = results[i];
-        const char *nm = launcher_get_name(l, idx);
-        if (!nm) continue;
-        double iy = y + pad + i * item_h;
-        if (e->hits) {
-            struct bar_hit h = {x - 4 + 4, x - 4 + w - 4, BAR_HIT_LAUNCHER_ITEM, (void*)(intptr_t)idx};
-            if (e->hits->n < BAR_MAX_HITS) e->hits->h[e->hits->n++] = h;
-        }
-        set_rgba(e->cr, e->th->foreground, 1.0);
-        text_draw_at(e->cr, e->text, nm, x + 8, iy + item_h/2.0);
-    }
-    cairo_restore(e->cr);
-}
-
 void bar_draw(cairo_t *cr, int w, int h, const struct bar_ctx *ctx, struct bar_hits *hits)
 {
     struct config def;
@@ -350,7 +302,6 @@ void bar_draw(cairo_t *cr, int w, int h, const struct bar_ctx *ctx, struct bar_h
 
     e.hits = hits;
     section(&e, BAR_START, sx, 1);
-    draw_launcher_panel(&e, sx);
     section(&e, BAR_CENTER, cx, 1);
     if (ex >= cx + cw + cfg->bar.spacing) section(&e, BAR_END, ex, 1); /* drop when it would overlap */
 

@@ -12,6 +12,10 @@ struct output;
 struct config;
 struct workspace_manager;
 struct sysinfo_state;
+struct panel;
+
+/* Called when the bar launcher button is clicked (opens the launcher panel). */
+typedef void (*surface_mgr_launcher_fn)(void *userdata);
 
 struct shm_buf {
     struct wl_buffer *wl;
@@ -46,6 +50,10 @@ struct surface_mgr {
     struct workspace_manager *wm;
     const struct sysinfo_state *sys;
     struct launcher *launcher;
+    struct panel *panel; /* overlay panel (launcher), routed first for input */
+    surface_mgr_launcher_fn on_launcher;
+    void *on_launcher_userdata;
+    struct output *focus_output;
     int bar_height;
     bool shutdown;
 };
@@ -60,11 +68,12 @@ void surface_mgr_on_output_added(struct surface_mgr *mgr, struct output *out);
 void surface_mgr_on_output_removed(struct surface_mgr *mgr, struct output *out);
 void surface_mgr_set_sysinfo(struct surface_mgr *mgr, const struct sysinfo_state *sys);
 void surface_mgr_set_launcher(struct surface_mgr *mgr, struct launcher *launcher);
+void surface_mgr_set_launcher_toggle(struct surface_mgr *mgr, surface_mgr_launcher_fn fn, void *userdata);
 
 /* Pointer routing (from seat.c). Return true if a clickable item is under x. */
-bool surface_mgr_pointer_motion(struct surface_mgr *mgr, struct wl_surface *surf, double x);
+bool surface_mgr_pointer_motion(struct surface_mgr *mgr, struct wl_surface *surf, double x, double y);
 void surface_mgr_pointer_leave(struct surface_mgr *mgr, struct wl_surface *surf);
-void surface_mgr_pointer_click(struct surface_mgr *mgr, struct wl_surface *surf, double x);
+void surface_mgr_pointer_click(struct surface_mgr *mgr, struct wl_surface *surf, double x, double y);
 void surface_mgr_pointer_scroll(struct surface_mgr *mgr, struct wl_surface *surf, int dir);
 
 #endif /* EMANCIPATION_SURFACE_MGR_H */
