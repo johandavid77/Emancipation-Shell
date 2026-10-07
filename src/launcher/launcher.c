@@ -18,10 +18,23 @@ struct launcher {
 
 static void launcher_spawn(const char *cmd)
 {
+    if (!cmd) return;
+    char buf[512];
+    strncpy(buf, cmd, sizeof(buf)-1);
+    buf[sizeof(buf)-1] = '\0';
+    /* strip %U %u %F %f %i %c %k */
+    char *p = buf;
+    while ((p = strchr(p, '%'))) {
+        if (p[1] && strchr("UuFficKk", p[1])) {
+            memmove(p, p+2, strlen(p+2)+1);
+        } else {
+            p++;
+        }
+    }
     pid_t pid = fork();
     if (pid == 0) {
         setsid();
-        execl("/bin/sh", "sh", "-c", cmd, (char *)NULL);
+        execl("/bin/sh", "sh", "-c", buf, (char *)NULL);
         _exit(1);
     } else if (pid > 0) {
         waitpid(pid, NULL, WNOHANG);
@@ -121,7 +134,8 @@ void launcher_exec_from_idx(struct launcher *l, int idx)
 {
     if (!l) return;
     if (idx >= 0 && idx < l->db.count) {
-        launcher_spawn(l->db.entries[idx].exec);
+        const char *cmd = l->db.entries[idx].exec;
+        launcher_spawn(cmd);
         l->visible = false;
     }
 }
