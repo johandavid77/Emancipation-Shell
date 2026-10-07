@@ -186,7 +186,9 @@ static struct layer_surface *find_layer(struct surface_mgr *mgr, struct output *
 
 static void layer_apply_geometry(struct surface_mgr *mgr, struct layer_surface *l)
 {
-    zwlr_layer_surface_v1_set_size(l->ls, 0, (uint32_t)mgr->bar_height);
+    int extra_h = 0;
+    if (mgr->launcher && launcher_is_visible(mgr->launcher)) extra_h = 160;
+    zwlr_layer_surface_v1_set_size(l->ls, 0, (uint32_t)(mgr->bar_height + extra_h));
     zwlr_layer_surface_v1_set_exclusive_zone(l->ls, mgr->bar_height);
 }
 

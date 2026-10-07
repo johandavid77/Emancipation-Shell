@@ -260,6 +260,26 @@ static PangoLayout *make_layout(cairo_t *cr, const char *family, double size, Pa
     return l;
 }
 
+static void draw_launcher_panel(struct draw_env *e, double x)
+{
+    struct launcher *l = e->ctx->launcher;
+    if (!l || !launcher_is_visible(l)) return;
+    double panel_h = 80.0;
+    double y = e->h;
+    cairo_save(e->cr);
+    set_rgba(e->cr, e->th->background, 1.0);
+    cairo_rectangle(e->cr, x, y, 240.0, panel_h);
+    cairo_fill(e->cr);
+    set_rgba(e->cr, e->th->surface_variant, 0.4);
+    cairo_set_line_width(e->cr, 1.0);
+    cairo_rectangle(e->cr, x + 0.5, y + 0.5, 239.0, panel_h - 1.0);
+    cairo_stroke(e->cr);
+    set_rgba(e->cr, e->th->foreground, 1.0);
+    cairo_move_to(e->cr, x + 8, y + 18);
+    text_draw(e, e->text, "Applications", x + 8);
+    cairo_restore(e->cr);
+}
+
 void bar_draw(cairo_t *cr, int w, int h, const struct bar_ctx *ctx, struct bar_hits *hits)
 {
     struct config def;
@@ -301,6 +321,7 @@ void bar_draw(cairo_t *cr, int w, int h, const struct bar_ctx *ctx, struct bar_h
 
     e.hits = hits;
     section(&e, BAR_START, sx, 1);
+    draw_launcher_panel(&e, sx);
     section(&e, BAR_CENTER, cx, 1);
     if (ex >= cx + cw + cfg->bar.spacing) section(&e, BAR_END, ex, 1); /* drop when it would overlap */
 
