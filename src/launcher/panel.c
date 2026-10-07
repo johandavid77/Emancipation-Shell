@@ -69,7 +69,7 @@ static void lp_draw(struct panel *p, cairo_t *cr, int w, int h)
     /* the layer surface is opaque, so paint the background over everything */
     cairo_save(cr);
     cairo_set_operator(cr, CAIRO_OPERATOR_SOURCE);
-    cairo_set_source_rgba(cr, th->background.r, th->background.g, th->background.b, 1.0);
+    cairo_set_source_rgba(cr, th->panel_background.r, th->panel_background.g, th->panel_background.b, 1.0);
     cairo_paint(cr);
     cairo_restore(cr);
 

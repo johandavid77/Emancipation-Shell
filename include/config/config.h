@@ -29,6 +29,7 @@ struct bar_config {
 /* Palette roles follow Noctalia's material-like naming. */
 struct theme_config {
     struct color_rgba background;      /* surface */
+    struct color_rgba panel_background; /* overlay panels: niri-like neutral */
     struct color_rgba foreground;      /* on_surface */
     struct color_rgba primary;
     struct color_rgba on_primary;

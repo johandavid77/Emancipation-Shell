@@ -60,6 +60,9 @@ void config_defaults(struct config *cfg)
     color_from_hex("#0e0e43", &cfg->theme.on_error);
     color_from_hex("#11112d", &cfg->theme.surface_variant);
     color_from_hex("#7c80b4", &cfg->theme.on_surface_variant);
+    /* Panels keep niri's neutral dark background instead of the tinted bar color,
+     * so an overlay never reads as a blue slab. */
+    color_from_hex("#1e1e1e", &cfg->theme.panel_background);
 
     snprintf(cfg->font.family, sizeof(cfg->font.family), "sans-serif");
     cfg->font.size = 11; /* points; ~14px at 96 dpi like Noctalia body text */

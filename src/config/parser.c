@@ -141,6 +141,7 @@ bool config_load_from_file(const char *path, struct config *out, char *errbuf, s
     if (theme) {
         static const struct { const char *key; size_t off; } roles[] = {
             { "background", offsetof(struct theme_config, background) },
+            { "panel_background", offsetof(struct theme_config, panel_background) },
             { "foreground", offsetof(struct theme_config, foreground) },
             { "primary", offsetof(struct theme_config, primary) },
             { "on_primary", offsetof(struct theme_config, on_primary) },
