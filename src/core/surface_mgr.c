@@ -2,6 +2,7 @@
 #include "core/surface_mgr.h"
 #include "core/wayland.h"
 #include "core/panel.h"
+#include "compositors/niri_ipc.h"
 #include "core/output.h"
 #include "bar/bar.h"
 #include "config/config.h"
@@ -119,6 +120,7 @@ static void layer_draw(struct layer_surface *l)
         .cfg = l->mgr->cfg,
         .wm = l->mgr->wm,
         .sys = l->mgr->sys,
+        .niri = l->mgr->niri,
         .launcher = l->mgr->launcher,
         .output = l->out ? l->out->wl : NULL,
         .hover_x = l->hover_x,
@@ -370,6 +372,14 @@ void surface_mgr_pointer_click(struct surface_mgr *mgr, struct wl_surface *surf,
             mgr->on_calendar(mgr->on_calendar_userdata);
             log_info("calendar toggled");
         }
+        if (hit->kind == BAR_HIT_TASKBAR && mgr->niri) {
+            const struct niri_window *w = niri_ipc_window(mgr->niri, (int)(intptr_t)hit->ref);
+            if (w) {
+                if (w->focused) niri_ipc_close(mgr->niri, w->id);
+                else niri_ipc_focus(mgr->niri, w->id);
+            }
+            log_info("taskbar clicked");
+        }
         if (hit->kind == BAR_HIT_KBD) { 
             pid_t pid = fork(); if (pid==0){ setsid(); execl("/bin/sh","sh","-c","echo 'KBD'",NULL); _exit(0);} 
         }
@@ -393,6 +403,11 @@ void surface_mgr_mark_dirty_all(struct surface_mgr *mgr)
         layer_draw(l);
     }
 }
+void surface_mgr_set_niri(struct surface_mgr *mgr, struct niri_ipc *n)
+{
+    if (mgr) mgr->niri = n;
+}
+
 void surface_mgr_set_launcher(struct surface_mgr *mgr, struct launcher *launcher)
 {
     if (mgr) mgr->launcher = launcher;

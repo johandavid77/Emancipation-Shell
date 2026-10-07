@@ -13,6 +13,7 @@ struct config;
 struct workspace_manager;
 struct sysinfo_state;
 struct panel;
+struct niri_ipc;
 
 /* Called when the bar launcher button is clicked (opens the launcher panel). */
 typedef void (*surface_mgr_launcher_fn)(void *userdata);
@@ -50,6 +51,7 @@ struct surface_mgr {
     struct workspace_manager *wm;
     const struct sysinfo_state *sys;
     struct launcher *launcher;
+    struct niri_ipc *niri;
 #define SURFACE_MGR_MAX_PANELS 4
     struct panel *panels[SURFACE_MGR_MAX_PANELS]; /* overlay panels, routed first for input */
     int n_panels;
@@ -75,6 +77,7 @@ void surface_mgr_set_launcher(struct surface_mgr *mgr, struct launcher *launcher
 void surface_mgr_set_launcher_toggle(struct surface_mgr *mgr, surface_mgr_launcher_fn fn, void *userdata);
 /* Registers an overlay panel; input is routed to it before the bar. */
 void surface_mgr_add_panel(struct surface_mgr *mgr, struct panel *p);
+void surface_mgr_set_niri(struct surface_mgr *mgr, struct niri_ipc *n);
 void surface_mgr_set_calendar_toggle(struct surface_mgr *mgr, surface_mgr_launcher_fn fn, void *userdata);
 struct output *surface_mgr_first_output(struct surface_mgr *mgr);
 /* Routes a keysym to the visible panel (launcher or calendar). */

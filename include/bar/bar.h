@@ -9,6 +9,7 @@ struct config;
 struct workspace_manager;
 struct sysinfo_state;
 struct launcher;
+struct niri_ipc;
 
 #define BAR_MAX_HITS 64
 
@@ -19,6 +20,7 @@ enum bar_hit_kind {
     BAR_HIT_DATE,
     BAR_HIT_KBD,
     BAR_HIT_LAUNCHER_ITEM,
+    BAR_HIT_TASKBAR,
 };
 
 /* Clickable horizontal span, in logical coordinates. */
@@ -35,6 +37,7 @@ struct bar_hits {
 
 struct bar_ctx {
     const struct config *cfg;
+    struct niri_ipc *niri;    /* window list for the taskbar */
     struct workspace_manager *wm;
     const struct sysinfo_state *sys;
     struct launcher *launcher;

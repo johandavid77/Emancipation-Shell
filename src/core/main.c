@@ -27,6 +27,7 @@ static int last_cpu=-2,last_ram=-2,last_bat=-2,last_chg=-1;
 #include "launcher/launcher.h"
 #include "launcher/panel.h"
 #include "core/panel.h"
+#include "compositors/niri_ipc.h"
 #include "control/calendar_panel.h"
 #include "dock/dock.h"
 #include "control/control_center.h"
@@ -204,12 +205,20 @@ int main(int argc, char **argv)
     int tfd = timerfd_create(CLOCK_REALTIME, TFD_NONBLOCK | TFD_CLOEXEC);
     if (tfd >= 0) arm_clock(tfd);
 
-    enum { FD_WL, FD_CLOCK, FD_CFG, FD_COUNT };
+    enum { FD_WL, FD_CLOCK, FD_CFG, FD_NIRI, FD_COUNT };
     struct pollfd fds[FD_COUNT] = {
         [FD_WL] = { .fd = wl_display_get_fd(display), .events = POLLIN },
         [FD_CLOCK] = { .fd = tfd, .events = POLLIN },
         [FD_CFG] = { .fd = config_watcher_get_fd(cw), .events = POLLIN },
+        [FD_NIRI] = { .fd = -1, .events = POLLIN },
     };
+
+    /* niri IPC feeds the taskbar; it is optional (other compositors) */
+    struct niri_ipc *niri = niri_ipc_create(NULL, NULL);
+    if (niri) {
+        surface_mgr_set_niri(&mgr, niri);
+        log_info("niri windows: %d", niri_ipc_window_count(niri));
+    }
 
     log_info("emancipation-shell running");
     while (!g_shutdown && !mgr.shutdown) {
@@ -252,6 +261,16 @@ int main(int argc, char **argv)
         if (fds[FD_CFG].revents & POLLIN) {
             config_watcher_dispatch(cw);
         }
+        if (niri) {
+            int nfd = niri_ipc_fd(niri);
+            if (nfd != fds[FD_NIRI].fd) fds[FD_NIRI].fd = nfd; /* (re)connect later */
+            if (fds[FD_NIRI].fd >= 0 && (fds[FD_NIRI].revents & (POLLIN | POLLHUP))) {
+                if (niri_ipc_dispatch(niri)) {
+                    log_info("niri windows: %d", niri_ipc_window_count(niri));
+                    surface_mgr_mark_dirty_all(&mgr);
+                }
+            }
+        }
         continue;
 wl_error:
         report_display_error(display);
@@ -261,6 +280,7 @@ wl_error:
 
     log_info("shutting down...");
     if (tfd >= 0) close(tfd);
+    if (niri) niri_ipc_destroy(niri);
     if (clip) clipboard_destroy(clip);
     if (ipc) ipc_destroy(ipc);
     if (hk) hotkeys_destroy(hk);

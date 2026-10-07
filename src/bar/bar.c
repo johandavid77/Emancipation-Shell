@@ -3,6 +3,8 @@
 #include "bar/workspaces.h"
 #include "launcher/launcher.h"
 #include "launcher/desktop.h"
+#include "launcher/icons.h"
+#include "compositors/niri_ipc.h"
 #include "config/config.h"
 #include <pango/pangocairo.h>
 #include <stdio.h>
@@ -130,6 +132,55 @@ static double w_time(struct draw_env *e, double x, int draw, const char *fmt, do
     return tw;
 }
 
+/* Taskbar: one icon per mapped toplevel, focused one highlighted.
+ * Window data comes from niri IPC, the same source Noctalia uses on niri. */
+static double w_taskbar(struct draw_env *e, double x, int draw)
+{
+    struct niri_ipc *n = e->ctx->niri;
+    if (!n) return 0.0;
+    int count = niri_ipc_window_count(n);
+    if (count <= 0) return 0.0;
+    double icon_px = 20.0;
+    double gap = 4.0;
+    double total = count * (icon_px + gap) - gap;
+    if (!draw) return total;
+    for (int i = 0; i < count; i++) {
+        const struct niri_window *w = niri_ipc_window(n, i);
+        if (!w) continue;
+        double ix = x + i * (icon_px + gap);
+        if (e->hits) {
+            struct bar_hit h = {x + total / count * i, x + total / count * (i + 1),
+                               BAR_HIT_TASKBAR, (void *)(intptr_t) i};
+            if (e->hits->n < BAR_MAX_HITS) e->hits->h[e->hits->n++] = h;
+        }
+        /* focused windows get a small underline, urgent ones a warning dot */
+        if (w->focused) {
+            set_rgba(e->cr, e->th->primary, 0.95);
+            cairo_rectangle(e->cr, ix + 2, e->h - 4, icon_px - 4, 2);
+            cairo_fill(e->cr);
+        }
+        if (w->urgent) {
+            set_rgba(e->cr, e->th->error, 1.0);
+            cairo_arc(e->cr, ix + icon_px - 3, 4, 2.5, 0, 2 * G_PI);
+            cairo_fill(e->cr);
+        }
+        cairo_surface_t *icon = icon_load_surface(w->app_id, (int)icon_px);
+        if (icon) {
+            cairo_set_source_surface(e->cr, icon, ix, (e->h - icon_px) / 2.0);
+            cairo_paint(e->cr);
+            cairo_surface_destroy(icon);
+        } else {
+            /* no icon: fall back to a truncated title */
+            char buf[8];
+            snprintf(buf, sizeof(buf), "%.1s", w->title);
+            set_rgba(e->cr, e->th->foreground, w->focused ? 1.0 : 0.7);
+            cairo_move_to(e->cr, ix + 6, (e->h - 12) / 2.0);
+            text_draw(e, e->text, buf, ix + 6);
+        }
+    }
+    return total;
+}
+
 static double w_launcher(struct draw_env *e, double x, int draw)
 {
     bool vis = e->ctx->launcher && launcher_is_visible(e->ctx->launcher);
@@ -169,17 +220,6 @@ static double w_tray(struct draw_env *e, double x, int draw)
 {
     (void)draw;
     return 0; /* not implemented */
-}
-
-static double w_taskbar(struct draw_env *e, double x, int draw)
-{
-    const char *txt = "win";
-    double tw = text_width(e->small, txt);
-    if (draw) {
-        set_rgba(e->cr, e->th->on_surface_variant, 1.0);
-        text_draw(e, e->small, txt, x);
-    }
-    return tw;
 }
 
 static double w_kbd(struct draw_env *e, double x, int draw)
