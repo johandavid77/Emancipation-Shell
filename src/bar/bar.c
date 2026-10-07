@@ -269,19 +269,21 @@ static void draw_launcher_panel(struct draw_env *e, double x)
     int count = 0;
     launcher_get_results(l, results, &count, 32);
     if (count > 32) count = 32;
-    double item_h = 22.0;
-    double pad = 8.0;
+    double item_h = 24.0;
+    double pad = 10.0;
     double panel_h = pad + count * item_h + pad;
-    if (panel_h > 240.0) panel_h = 240.0;
+    if (panel_h > 260.0) panel_h = 260.0;
     double y = e->h;
-    double w = 320.0;
+    double w = 340.0;
+    /* align near launcher start */
     cairo_save(e->cr);
+    /* drop shadow-ish? simple solid bg */
     set_rgba(e->cr, e->th->background, 1.0);
-    cairo_rectangle(e->cr, x, y, w, panel_h);
+    cairo_rectangle(e->cr, x - 4, y, w, panel_h);
     cairo_fill(e->cr);
-    set_rgba(e->cr, e->th->surface_variant, 0.4);
+    set_rgba(e->cr, e->th->surface_variant, 0.6);
     cairo_set_line_width(e->cr, 1.0);
-    cairo_rectangle(e->cr, x + 0.5, y + 0.5, w - 1.0, panel_h - 1.0);
+    cairo_rectangle(e->cr, x - 4 + 0.5, y + 0.5, w - 1.0, panel_h - 1.0);
     cairo_stroke(e->cr);
     for (int i = 0; i < count; i++) {
         int idx = results[i];
@@ -289,12 +291,12 @@ static void draw_launcher_panel(struct draw_env *e, double x)
         if (!nm) continue;
         double iy = y + pad + i * item_h;
         if (e->hits) {
-            struct bar_hit h = {x + 4, x + w - 4, BAR_HIT_LAUNCHER_ITEM, (void*)(intptr_t)idx};
+            struct bar_hit h = {x - 4 + 4, x - 4 + w - 4, BAR_HIT_LAUNCHER_ITEM, (void*)(intptr_t)idx};
             if (e->hits->n < BAR_MAX_HITS) e->hits->h[e->hits->n++] = h;
         }
         set_rgba(e->cr, e->th->foreground, 1.0);
-        cairo_move_to(e->cr, x + pad, iy + (item_h - 12.0)/2.0 + 4.0);
-        text_draw(e, e->text, nm, x + pad);
+        cairo_move_to(e->cr, x + 8, iy + (item_h - 12.0)/2.0 + 5.0);
+        text_draw(e, e->text, nm, x + 8);
     }
     cairo_restore(e->cr);
 }
