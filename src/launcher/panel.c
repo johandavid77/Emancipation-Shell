@@ -19,6 +19,7 @@
 struct launcher_panel {
     struct panel panel;
     struct launcher *launcher;
+    struct output *fallback_out; /* output used before the panel has a surface */
     const struct config *cfg;
     char query[128];
     int results[LP_MAX_RESULTS];
@@ -205,12 +206,13 @@ static void lp_motion(struct panel *p, double x, double y)
 }
 
 struct launcher_panel *launcher_panel_create(struct wayland_ctx *ctx, struct launcher *l,
-                                             const struct config **cfg)
+                                             const struct config **cfg, struct output *out)
 {
     struct launcher_panel *lp = calloc(1, sizeof(*lp));
     if (!lp) return NULL;
     panel_init(&lp->panel, ctx);
     lp->launcher = l;
+    lp->fallback_out = out;
     lp->cfg = cfg ? *cfg : NULL;
     lp->selected = 0;
     lp_refresh(lp);
@@ -233,6 +235,7 @@ struct panel *launcher_panel_surface(struct launcher_panel *lp)
 void launcher_panel_show(struct launcher_panel *lp, struct output *out)
 {
     if (!lp) return;
+    if (!out) out = lp->fallback_out;
     lp->query[0] = '\0';
     lp_refresh(lp);
     if (!panel_show(&lp->panel, out, LP_W, LP_H)) log_warn("launcher panel: show failed");
@@ -266,5 +269,6 @@ void launcher_panel_toggle_proxy(void *userdata)
 {
     struct launcher_panel *lp = userdata;
     if (!lp) return;
-    if (lp->panel.out) launcher_panel_toggle(lp, lp->panel.out);
+    struct output *out = lp->panel.out ? lp->panel.out : lp->fallback_out;
+    launcher_panel_toggle(lp, out);
 }

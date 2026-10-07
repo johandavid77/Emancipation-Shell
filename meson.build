@@ -99,6 +99,7 @@ srcs = [
   'src/launcher/launcher.c',
   'src/dock/dock.c',
   'src/control/control_center.c',
+  'src/control/calendar_panel.c',
   'src/osd/osd.c',
   'src/notify/notification.c',
   'src/notify/notify_daemon.c',

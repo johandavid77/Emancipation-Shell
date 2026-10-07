@@ -298,6 +298,15 @@ void surface_mgr_set_sysinfo(struct surface_mgr *mgr, const struct sysinfo_state
     if (mgr) mgr->sys = sys;
 }
 
+static struct panel *find_panel(struct surface_mgr *mgr, struct wl_surface *surf)
+{
+    for (int i = 0; i < mgr->n_panels; i++) {
+        if (mgr->panels[i] && mgr->panels[i]->surf == surf && panel_is_visible(mgr->panels[i]))
+            return mgr->panels[i];
+    }
+    return NULL;
+}
+
 static struct layer_surface *find_by_surface(struct surface_mgr *mgr, struct wl_surface *surf)
 {
     struct layer_surface *l;
@@ -309,10 +318,11 @@ static struct layer_surface *find_by_surface(struct surface_mgr *mgr, struct wl_
 
 bool surface_mgr_pointer_motion(struct surface_mgr *mgr, struct wl_surface *surf, double x, double y)
 {
-    if (mgr->panel && mgr->panel->surf == surf && panel_is_visible(mgr->panel)) {
-        mgr->panel->hover_x = x;
-        mgr->panel->hover_y = y;
-        if (mgr->panel->motion) mgr->panel->motion(mgr->panel, x, y);
+    struct panel *pn = find_panel(mgr, surf);
+    if (pn) {
+        pn->hover_x = x;
+        pn->hover_y = y;
+        if (pn->motion) pn->motion(pn, x, y);
         return true;
     }
     struct layer_surface *l = find_by_surface(mgr, surf);
@@ -329,7 +339,7 @@ bool surface_mgr_pointer_motion(struct surface_mgr *mgr, struct wl_surface *surf
 
 void surface_mgr_pointer_leave(struct surface_mgr *mgr, struct wl_surface *surf)
 {
-    if (mgr->panel && mgr->panel->surf == surf) return;
+    if (find_panel(mgr, surf)) return;
     struct layer_surface *l = find_by_surface(mgr, surf);
     if (!l) return;
     bool had = bar_hit_at(&l->hits, l->hover_x) != NULL;
@@ -342,8 +352,9 @@ void surface_mgr_pointer_leave(struct surface_mgr *mgr, struct wl_surface *surf)
 
 void surface_mgr_pointer_click(struct surface_mgr *mgr, struct wl_surface *surf, double x, double y)
 {
-    if (mgr->panel && mgr->panel->surf == surf && panel_is_visible(mgr->panel)) {
-        if (mgr->panel->click) mgr->panel->click(mgr->panel, x, y);
+    struct panel *pn = find_panel(mgr, surf);
+    if (pn) {
+        if (pn->click) pn->click(pn, x, y);
         return;
     }
     struct layer_surface *l = find_by_surface(mgr, surf);
@@ -355,8 +366,9 @@ void surface_mgr_pointer_click(struct surface_mgr *mgr, struct wl_surface *surf,
             if (mgr->on_launcher) mgr->on_launcher(mgr->on_launcher_userdata);
             log_info("launcher toggled");
         }
-        if (hit->kind == BAR_HIT_CLOCK || hit->kind == BAR_HIT_DATE) { 
-            pid_t pid = fork(); if (pid==0){ setsid(); execl("/bin/sh","sh","-c","date",NULL); _exit(0);} 
+        if ((hit->kind == BAR_HIT_CLOCK || hit->kind == BAR_HIT_DATE) && mgr->on_calendar) {
+            mgr->on_calendar(mgr->on_calendar_userdata);
+            log_info("calendar toggled");
         }
         if (hit->kind == BAR_HIT_KBD) { 
             pid_t pid = fork(); if (pid==0){ setsid(); execl("/bin/sh","sh","-c","echo 'KBD'",NULL); _exit(0);} 
@@ -366,7 +378,7 @@ void surface_mgr_pointer_click(struct surface_mgr *mgr, struct wl_surface *surf,
 
 void surface_mgr_pointer_scroll(struct surface_mgr *mgr, struct wl_surface *surf, int dir)
 {
-    if (mgr->panel && mgr->panel->surf == surf) return;
+    if (find_panel(mgr, surf)) return;
     struct layer_surface *l = find_by_surface(mgr, surf);
     if (!l) return;
     workspaces_step(mgr->wm, l->out ? l->out->wl : NULL, dir);
@@ -384,6 +396,36 @@ void surface_mgr_mark_dirty_all(struct surface_mgr *mgr)
 void surface_mgr_set_launcher(struct surface_mgr *mgr, struct launcher *launcher)
 {
     if (mgr) mgr->launcher = launcher;
+}
+
+void surface_mgr_add_panel(struct surface_mgr *mgr, struct panel *p)
+{
+    if (!mgr || !p || mgr->n_panels >= SURFACE_MGR_MAX_PANELS) return;
+    mgr->panels[mgr->n_panels++] = p;
+}
+
+bool surface_mgr_handle_key(struct surface_mgr *mgr, uint32_t keysym, uint32_t mods)
+{
+    for (int i = 0; i < mgr->n_panels; i++) {
+        struct panel *p = mgr->panels[i];
+        if (!p || !panel_is_visible(p)) continue;
+        if (p->key) return p->key(p, keysym, mods);
+        return false;
+    }
+    return false;
+}
+
+struct output *surface_mgr_first_output(struct surface_mgr *mgr)
+{
+    if (!mgr || !mgr->outputs || wl_list_empty(mgr->outputs)) return NULL;
+    return wl_container_of(mgr->outputs->next, (struct output *)mgr->outputs->next, link);
+}
+
+void surface_mgr_set_calendar_toggle(struct surface_mgr *mgr, surface_mgr_launcher_fn fn, void *userdata)
+{
+    if (!mgr) return;
+    mgr->on_calendar = fn;
+    mgr->on_calendar_userdata = userdata;
 }
 
 void surface_mgr_set_launcher_toggle(struct surface_mgr *mgr, surface_mgr_launcher_fn fn, void *userdata)

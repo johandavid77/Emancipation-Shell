@@ -50,9 +50,13 @@ struct surface_mgr {
     struct workspace_manager *wm;
     const struct sysinfo_state *sys;
     struct launcher *launcher;
-    struct panel *panel; /* overlay panel (launcher), routed first for input */
+#define SURFACE_MGR_MAX_PANELS 4
+    struct panel *panels[SURFACE_MGR_MAX_PANELS]; /* overlay panels, routed first for input */
+    int n_panels;
     surface_mgr_launcher_fn on_launcher;
     void *on_launcher_userdata;
+    surface_mgr_launcher_fn on_calendar;
+    void *on_calendar_userdata;
     struct output *focus_output;
     int bar_height;
     bool shutdown;
@@ -69,6 +73,12 @@ void surface_mgr_on_output_removed(struct surface_mgr *mgr, struct output *out);
 void surface_mgr_set_sysinfo(struct surface_mgr *mgr, const struct sysinfo_state *sys);
 void surface_mgr_set_launcher(struct surface_mgr *mgr, struct launcher *launcher);
 void surface_mgr_set_launcher_toggle(struct surface_mgr *mgr, surface_mgr_launcher_fn fn, void *userdata);
+/* Registers an overlay panel; input is routed to it before the bar. */
+void surface_mgr_add_panel(struct surface_mgr *mgr, struct panel *p);
+void surface_mgr_set_calendar_toggle(struct surface_mgr *mgr, surface_mgr_launcher_fn fn, void *userdata);
+struct output *surface_mgr_first_output(struct surface_mgr *mgr);
+/* Routes a keysym to the visible panel (launcher or calendar). */
+bool surface_mgr_handle_key(struct surface_mgr *mgr, uint32_t keysym, uint32_t mods);
 
 /* Pointer routing (from seat.c). Return true if a clickable item is under x. */
 bool surface_mgr_pointer_motion(struct surface_mgr *mgr, struct wl_surface *surf, double x, double y);

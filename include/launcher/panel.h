@@ -7,7 +7,7 @@ struct launcher;
 struct config;
 
 struct launcher_panel *launcher_panel_create(struct wayland_ctx *ctx, struct launcher *l,
-                                             const struct config **cfg);
+                                             const struct config **cfg, struct output *out);
 void launcher_panel_destroy(struct launcher_panel *lp);
 struct panel *launcher_panel_surface(struct launcher_panel *lp);
 void launcher_panel_toggle(struct launcher_panel *lp, struct output *out);
