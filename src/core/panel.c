@@ -157,8 +157,9 @@ static void panel_teardown_surface(struct panel *p)
     panel_buf_destroy(&p->bufs[1]);
     p->configured = false;
     p->visible = false;
-    wl_list_remove(&p->link);
-    p->link.prev = p->link.next = NULL;
+    p->hover_x = p->hover_y = -1;
+    /* panels are held in surface_mgr's array, never in a wl_list, so there is
+     * nothing to unlink here (an uninitialised wl_list_remove segfaulted). */
 }
 
 void panel_fini(struct panel *p)
