@@ -3,6 +3,7 @@
 #include "core/wayland.h"
 #include "config/config.h"
 #include "util/log.h"
+#include "calendar/ics.h"
 
 #include <pango/pangocairo.h>
 #include <stdlib.h>
@@ -29,12 +30,15 @@ struct calendar_panel {
     PangoLayout *layout;
     PangoLayout *small;
     PangoLayout *title;
+    struct cal_day day;      /* events for the selected day */
+    int day_loaded_year, day_loaded_mon, day_loaded_day;
     /* geometry for pointer hit testing */
     double grid_x0, grid_y0, cell_w, cell_h;
 };
 
 static void cp_sync_today(struct calendar_panel *cp)
 {
+    cp->day_loaded_day = -1;
     time_t now = time(NULL);
     struct tm t;
     localtime_r(&now, &t);
@@ -44,6 +48,19 @@ static void cp_sync_today(struct calendar_panel *cp)
     cp->view.tm_min = 0;
     cp->view.tm_sec = 0;
     cp->selected = t.tm_mday;
+}
+
+static void cp_load_events(struct calendar_panel *cp)
+{
+    if (cp->day_loaded_year == cp->view.tm_year + 1900 &&
+        cp->day_loaded_mon == cp->view.tm_mon + 1 &&
+        cp->day_loaded_day == cp->selected) return;
+    int n = ics_load_day(cp->view.tm_year + 1900, cp->view.tm_mon + 1, cp->selected, &cp->day);
+    cp->day_loaded_year = cp->view.tm_year + 1900;
+    cp->day_loaded_mon = cp->view.tm_mon + 1;
+    cp->day_loaded_day = cp->selected;
+    log_debug("calendar: %d events for %d-%02d-%02d", n, cp->day_loaded_year, cp->day_loaded_mon,
+              cp->day_loaded_day);
 }
 
 static int cp_days_in_month(int year, int mon /* 0-11 */)
@@ -198,15 +215,50 @@ static void cp_draw(struct panel *p, cairo_t *cr, int w, int h)
         cairo_move_to(cr, CP_PAD, ay);
         pango_cairo_show_layout(cr, cp->small);
 
-        pango_layout_set_text(cp->small, "no events", -1);
-        cairo_set_source_rgba(cr, th->foreground.r, th->foreground.g, th->foreground.b, 0.4);
-        cairo_move_to(cr, CP_PAD, ay + 20);
-        pango_cairo_show_layout(cr, cp->small);
+        cp_load_events(cp);
+        if (cp->day.n == 0) {
+            pango_layout_set_text(cp->small, "no events", -1);
+            cairo_set_source_rgba(cr, th->foreground.r, th->foreground.g, th->foreground.b, 0.4);
+            cairo_move_to(cr, CP_PAD, ay + 20);
+            pango_cairo_show_layout(cr, cp->small);
+        } else {
+            double ey = ay + 20;
+            for (int i = 0; i < cp->day.n && ey < h - 6; i++) {
+                const struct cal_event *ev = &cp->day.ev[i];
+                char time_buf[16] = "";
+                if (!ev->all_day) {
+                    struct tm t;
+                    localtime_r(&ev->start, &t);
+                    strftime(time_buf, sizeof(time_buf), "%H:%M", &t);
+                } else {
+                    snprintf(time_buf, sizeof(time_buf), "all-day");
+                }
+                /* collection color dot, then time, then summary */
+                if (ev->color[0] && ev->color[0] == '#') {
+                    unsigned r = 0, g = 0, b = 0;
+                    if (sscanf(ev->color + 1, "%2x%2x%2x", &r, &g, &b) == 3) {
+                        cairo_set_source_rgb(cr, r / 255.0, g / 255.0, b / 255.0);
+                        cairo_arc(cr, CP_PAD + 4, ey + 8, 3.5, 0, 2 * G_PI);
+                        cairo_fill(cr);
+                    }
+                }
+                cairo_set_source_rgba(cr, th->foreground.r, th->foreground.g, th->foreground.b, 0.55);
+                pango_layout_set_text(cp->small, time_buf, -1);
+                cairo_move_to(cr, CP_PAD + 14, ey);
+                pango_cairo_show_layout(cr, cp->small);
+                cairo_set_source_rgba(cr, th->foreground.r, th->foreground.g, th->foreground.b, 0.95);
+                pango_layout_set_text(cp->layout, ev->summary, -1);
+                cairo_move_to(cr, CP_PAD + 90, ey);
+                pango_cairo_show_layout(cr, cp->layout);
+                ey += 18;
+            }
+        }
     }
 }
 
 static void cp_add_month(struct calendar_panel *cp, int delta)
 {
+    cp->day_loaded_day = -1;
     int m = cp->view.tm_mon + delta;
     int y = cp->view.tm_year;
     while (m < 0) { m += 12; y--; }
@@ -243,6 +295,7 @@ static bool cp_key(struct panel *p, uint32_t keysym, uint32_t mods)
             return true;
         case 0xff52: /* Up: previous week */
             cp->selected -= 7;
+            cp->day_loaded_day = -1;
             ndays = cp_days_in_month(cp->view.tm_year + 1900, cp->view.tm_mon);
             if (cp->selected < 1) cp->selected = 1;
             if (cp->selected > ndays) cp->selected = ndays;
@@ -251,6 +304,7 @@ static bool cp_key(struct panel *p, uint32_t keysym, uint32_t mods)
         case 0xff54: /* Down: next week */
             ndays = cp_days_in_month(cp->view.tm_year + 1900, cp->view.tm_mon);
             cp->selected += 7;
+            cp->day_loaded_day = -1;
             if (cp->selected > ndays) cp->selected = ndays;
             panel_mark_dirty(p);
             return true;
@@ -295,6 +349,7 @@ static bool cp_click(struct panel *p, double x, double y)
     if (n >= 1 && n <= cp_days_in_month(cp->view.tm_year + 1900, cp->view.tm_mon)) {
         cp->selected = n;
     }
+    cp->day_loaded_day = -1;
     panel_mark_dirty(p);
     return true;
 }

@@ -95,6 +95,7 @@ srcs = [
   'src/core/seat.c',
   'src/core/panel.c',
   'src/compositors/niri_ipc.c',
+  'src/calendar/ics.c',
   'src/launcher/panel.c',
   'src/launcher/desktop.c',
   'src/launcher/icons.c',
