@@ -61,6 +61,15 @@ static void text_draw(struct draw_env *e, PangoLayout *l, const char *txt, doubl
     pango_cairo_show_layout(e->cr, l);
 }
 
+static void text_draw_at(cairo_t *cr, PangoLayout *l, const char *txt, double x, double y)
+{
+    int tw, th;
+    pango_layout_set_text(l, txt, -1);
+    pango_layout_get_pixel_size(l, &tw, &th);
+    cairo_move_to(cr, x, y - th/2.0);
+    pango_cairo_show_layout(cr, l);
+}
+
 static void add_hit(struct draw_env *e, double x0, double x1, enum bar_hit_kind k, void *ref)
 {
     if (!e->hits || e->hits->n >= BAR_MAX_HITS) return;
@@ -295,8 +304,7 @@ static void draw_launcher_panel(struct draw_env *e, double x)
             if (e->hits->n < BAR_MAX_HITS) e->hits->h[e->hits->n++] = h;
         }
         set_rgba(e->cr, e->th->foreground, 1.0);
-        cairo_move_to(e->cr, x + 8, iy + (item_h - 12.0)/2.0 + 5.0);
-        text_draw(e, e->text, nm, x + 8);
+        text_draw_at(e->cr, e->text, nm, x + 8, iy + item_h/2.0);
     }
     cairo_restore(e->cr);
 }
