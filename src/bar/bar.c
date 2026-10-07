@@ -124,6 +124,7 @@ static double w_time(struct draw_env *e, double x, int draw, const char *fmt, do
     if (draw) {
         set_rgba(e->cr, e->th->foreground, alpha);
         text_draw(e, e->text, buf, x);
+        add_hit(e, x - 8, x + tw + 8, hit, NULL);
     }
     return tw;
 }

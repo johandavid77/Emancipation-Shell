@@ -23,6 +23,21 @@ static void registry_global(void *data, struct wl_registry *registry,
                                                             &wl_shm_interface,
                                                             version >= 1 ? 1 : version);
         log_debug("bound wl_shm");
+    } else if (strcmp(interface, "wl_seat") == 0) {
+        struct wl_seat *wl_s = wl_registry_bind(registry, name, &wl_seat_interface,
+                                                 version < 5 ? version : 5);
+        if (state->ctx->seat) {
+            seat_attach(state->ctx->seat, wl_s);
+            log_info("wl_seat bound");
+        } else {
+            wl_seat_destroy(wl_s);
+        }
+        return;
+    } else if (strcmp(interface, "wp_cursor_shape_manager_v1") == 0) {
+        state->ctx->cursor_shape_mgr = (struct wp_cursor_shape_manager_v1 *)
+            wl_registry_bind(registry, name, &wp_cursor_shape_manager_v1_interface, 1);
+        log_info("cursor_shape_manager bound");
+        return;
     } else if (strcmp(interface, "zwlr_layer_shell_v1") == 0) {
         state->ctx->layer_shell = (struct zwlr_layer_shell_v1 *)wl_registry_bind(registry, name,
                                                                                   &zwlr_layer_shell_v1_interface,
