@@ -2,6 +2,7 @@
 #define EMANCIPATION_LAUNCHER_H
 
 #include <stdbool.h>
+#include <stddef.h>
 
 struct launcher;
 struct wayland_ctx;
@@ -16,3 +17,6 @@ void launcher_set_query(struct launcher *l, const char *q);
 void launcher_exec_selected(struct launcher *l);
 
 #endif /* EMANCIPATION_LAUNCHER_H */
+
+void launcher_get_query(struct launcher *l, char *out, size_t outsz);
+void launcher_get_results(struct launcher *l, int *results, int *count_out, int maxn);

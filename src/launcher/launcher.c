@@ -96,3 +96,17 @@ void launcher_exec_selected(struct launcher *l)
     }
     launcher_hide(l);
 }
+
+void launcher_get_query(struct launcher *l, char *out, size_t outsz)
+{
+    if (!l || !out || outsz == 0) return;
+    strncpy(out, l->query, outsz - 1);
+    out[outsz - 1] = '\0';
+}
+
+void launcher_get_results(struct launcher *l, int *results, int *count_out, int maxn)
+{
+    if (!l || !results || !count_out || maxn <= 0) return;
+    int c = desktop_db_search_fuzzy(&l->db, l->query, results, maxn);
+    *count_out = c;
+}
