@@ -35,7 +35,9 @@ cairo_surface_t *launcher_icon_for(struct launcher *l, int idx)
     l->icon_idx[l->icon_n] = idx;
     l->icons[l->icon_n] = s;
     l->icon_n++;
-    if (s) log_debug("launcher icon loaded: %s", name);
+    if (s) log_info("launcher icon: %s -> %dx%d", name, cairo_image_surface_get_width(s),
+                    cairo_image_surface_get_height(s));
+    else log_info("launcher icon: %s NOT FOUND", name);
     return s;
 }
 
@@ -75,6 +77,12 @@ struct launcher *launcher_create(struct wayland_ctx *ctx)
     desktop_db_init(&l->db);
     desktop_db_load_system(&l->db);
     log_info("launcher loaded %d desktop entries", l->db.count);
+    for (int i = 0; i < l->db.count; i++) {
+        char *path = icon_resolve_path(l->db.entries[i].icon);
+        log_info("  entry %d: name=\"%s\" icon=\"%s\" -> %s", i, l->db.entries[i].name,
+                 l->db.entries[i].icon, path ? path : "MISSING");
+        free(path);
+    }
     return l;
 }
 

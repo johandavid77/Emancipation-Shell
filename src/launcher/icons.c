@@ -53,23 +53,27 @@ static char *resolve_absolute(const char *icon)
     return NULL;
 }
 
-static char *resolve_in_root(const char *root, const char *theme, const char *icon)
+/* icons_dir is the base that holds theme directories (e.g. /usr/share/icons),
+ * theme is the theme name; the pixmaps "theme" has no subdirectory at all. */
+static char *resolve_in_dir(const char *icons_dir, const char *theme, const char *icon)
 {
     char buf[1024];
     if (strcmp(theme, "pixmaps") == 0) {
-        snprintf(buf, sizeof(buf), "%s/%s.png", root, icon);
+        snprintf(buf, sizeof(buf), "%s/%s/%s.png", icons_dir, theme, icon);
+        if (file_exists(buf)) return strdup(buf);
+        snprintf(buf, sizeof(buf), "%s/%s.png", icons_dir, icon);
         if (file_exists(buf)) return strdup(buf);
         return NULL;
     }
-    /* hicolor style: <root>/<theme>/<size>x<size>/apps/<icon>.png */
+    /* freedesktop raster layout: <icons_dir>/<theme>/<size>x<size>/apps/<icon>.png */
     for (size_t i = 0; i < sizeof(icon_sizes) / sizeof(icon_sizes[0]); i++) {
-        snprintf(buf, sizeof(buf), "%s/%s/%dx%d/apps/%s.png", root, theme, icon_sizes[i],
+        snprintf(buf, sizeof(buf), "%s/%s/%dx%d/apps/%s.png", icons_dir, theme, icon_sizes[i],
                  icon_sizes[i], icon);
         if (file_exists(buf)) return strdup(buf);
     }
-    /* breeze ships scale variants: <root>/<theme>/apps/32x32/<icon>.svg|... */
-    for (int s = 32; s <= 128; s *= 2) {
-        snprintf(buf, sizeof(buf), "%s/%s/apps/%dx%d/%s.png", root, theme, s, s, icon);
+    /* scale variants: <icons_dir>/<theme>/apps/<size>x<size>/<icon>.png */
+    for (int s = 16; s <= 128; s *= 2) {
+        snprintf(buf, sizeof(buf), "%s/%s/apps/%dx%d/%s.png", icons_dir, theme, s, s, icon);
         if (file_exists(buf)) return strdup(buf);
     }
     return NULL;
@@ -92,33 +96,24 @@ char *icon_resolve_path(const char *icon)
     /* user's own icon theme wins, like gtk's lookup */
     if (home) {
         for (size_t t = 0; t < sizeof(icon_themes)/sizeof(icon_themes[0]); t++) {
-            snprintf(buf, sizeof(buf), "%s/.local/share/icons/%s", home, icon_themes[t]);
-            if (dir_exists(buf)) {
-                char *p = resolve_in_root(buf, icon_themes[t], icon);
-                if (p) return p;
-            }
+            snprintf(buf, sizeof(buf), "%s/.local/share/icons", home);
+            char *p = resolve_in_dir(buf, icon_themes[t], icon);
+            if (p) return p;
         }
         snprintf(buf, sizeof(buf), "%s/.icons", home);
-        for (size_t i = 0; i < sizeof(icon_sizes)/sizeof(icon_sizes[0]); i++) {
-            snprintf(buf + strlen(buf), 0, ""); /* no-op, keep buf sane */
-            char p2[1024];
-            snprintf(p2, sizeof(p2), "%s/.icons/%s.png", home, icon);
-            if (file_exists(p2)) return strdup(p2);
-            snprintf(p2, sizeof(p2), "%s/.icons/%dx%d/apps/%s.png", home, icon_sizes[i],
-                     icon_sizes[i], icon);
-            if (file_exists(p2)) return strdup(p2);
-        }
+        char *p = resolve_in_dir(buf, "pixmaps", icon);
+        if (p) return p;
     }
 
     for (size_t r = 0; r < sizeof(icon_roots)/sizeof(icon_roots[0]); r++) {
         for (size_t t = 0; t < sizeof(icon_themes)/sizeof(icon_themes[0]); t++) {
-            char root[1024];
-            snprintf(root, sizeof(root), "%s/%s", icon_roots[r], icon_themes[t]);
-            if (!dir_exists(root)) continue;
-            char *p = resolve_in_root(root, icon_themes[t], icon);
+            char tdir[1024];
+            snprintf(tdir, sizeof(tdir), "%s/%s", icon_roots[r], icon_themes[t]);
+            if (!dir_exists(tdir)) continue;
+            char *p = resolve_in_dir(icon_roots[r], icon_themes[t], icon);
             if (p) return p;
         }
-        char *p = resolve_in_root(icon_roots[r], "pixmaps", icon);
+        char *p = resolve_in_dir(icon_roots[r], "pixmaps", icon);
         if (p) return p;
     }
     return resolve_svg_free_icons(icon);
