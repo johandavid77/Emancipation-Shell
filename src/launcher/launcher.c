@@ -110,3 +110,18 @@ void launcher_get_results(struct launcher *l, int *results, int *count_out, int 
     int c = desktop_db_search_fuzzy(&l->db, l->query, results, maxn);
     *count_out = c;
 }
+
+const char *launcher_get_name(struct launcher *l, int idx)
+{
+    if (!l || idx < 0 || idx >= l->db.count) return NULL;
+    return l->db.entries[idx].name;
+}
+
+void launcher_exec_from_idx(struct launcher *l, int idx)
+{
+    if (!l) return;
+    if (idx >= 0 && idx < l->db.count) {
+        launcher_spawn(l->db.entries[idx].exec);
+        l->visible = false;
+    }
+}

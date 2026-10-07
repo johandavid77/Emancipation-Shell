@@ -20,3 +20,5 @@ void launcher_exec_selected(struct launcher *l);
 
 void launcher_get_query(struct launcher *l, char *out, size_t outsz);
 void launcher_get_results(struct launcher *l, int *results, int *count_out, int maxn);
+const char *launcher_get_name(struct launcher *l, int idx);
+void launcher_exec_from_idx(struct launcher *l, int idx);

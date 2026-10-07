@@ -2,6 +2,7 @@
 #include "bar/sysinfo.h"
 #include "bar/workspaces.h"
 #include "launcher/launcher.h"
+#include "launcher/desktop.h"
 #include "config/config.h"
 #include <pango/pangocairo.h>
 #include <stdio.h>
@@ -264,19 +265,37 @@ static void draw_launcher_panel(struct draw_env *e, double x)
 {
     struct launcher *l = e->ctx->launcher;
     if (!l || !launcher_is_visible(l)) return;
-    double panel_h = 80.0;
+    int results[32];
+    int count = 0;
+    launcher_get_results(l, results, &count, 32);
+    if (count > 32) count = 32;
+    double item_h = 22.0;
+    double pad = 8.0;
+    double panel_h = pad + count * item_h + pad;
+    if (panel_h > 240.0) panel_h = 240.0;
     double y = e->h;
+    double w = 320.0;
     cairo_save(e->cr);
     set_rgba(e->cr, e->th->background, 1.0);
-    cairo_rectangle(e->cr, x, y, 240.0, panel_h);
+    cairo_rectangle(e->cr, x, y, w, panel_h);
     cairo_fill(e->cr);
     set_rgba(e->cr, e->th->surface_variant, 0.4);
     cairo_set_line_width(e->cr, 1.0);
-    cairo_rectangle(e->cr, x + 0.5, y + 0.5, 239.0, panel_h - 1.0);
+    cairo_rectangle(e->cr, x + 0.5, y + 0.5, w - 1.0, panel_h - 1.0);
     cairo_stroke(e->cr);
-    set_rgba(e->cr, e->th->foreground, 1.0);
-    cairo_move_to(e->cr, x + 8, y + 18);
-    text_draw(e, e->text, "Applications", x + 8);
+    for (int i = 0; i < count; i++) {
+        int idx = results[i];
+        const char *nm = launcher_get_name(l, idx);
+        if (!nm) continue;
+        double iy = y + pad + i * item_h;
+        if (e->hits) {
+            struct bar_hit h = {x + 4, x + w - 4, BAR_HIT_LAUNCHER_ITEM, (void*)(intptr_t)idx};
+            if (e->hits->n < BAR_MAX_HITS) e->hits->h[e->hits->n++] = h;
+        }
+        set_rgba(e->cr, e->th->foreground, 1.0);
+        cairo_move_to(e->cr, x + pad, iy + (item_h - 12.0)/2.0 + 4.0);
+        text_draw(e, e->text, nm, x + pad);
+    }
     cairo_restore(e->cr);
 }
 
