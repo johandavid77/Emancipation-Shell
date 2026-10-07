@@ -23,5 +23,5 @@ void launcher_get_query(struct launcher *l, char *out, size_t outsz);
 void launcher_get_results(struct launcher *l, int *results, int *count_out, int maxn);
 const char *launcher_get_name(struct launcher *l, int idx);
 /* Decoded icon for a desktop entry, from the launcher cache (NULL if none). */
-cairo_surface_t *launcher_icon_for(struct launcher *l, int idx);
+cairo_surface_t *launcher_icon_for(struct launcher *l, int idx, int px);
 void launcher_exec_from_idx(struct launcher *l, int idx);

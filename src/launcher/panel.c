@@ -117,18 +117,19 @@ static void lp_draw(struct panel *p, cairo_t *cr, int w, int h)
             round_rect(cr, lp->row_x0, ry, lp->row_w, LP_ROW_H - 4.0, 6.0);
             cairo_fill(cr);
         }
-        double icon_px = 22.0;
+        double icon_px = 20.0;
+        double row_h = LP_ROW_H - 4.0;
         double text_x = lp->row_x0 + 12.0;
-        cairo_surface_t *icon = launcher_icon_for(lp->launcher, idx);
+        cairo_surface_t *icon = launcher_icon_for(lp->launcher, idx, (int)icon_px);
         if (icon) {
-            cairo_set_source_surface(cr, icon, text_x, ry + (LP_ROW_H - 4.0 - icon_px) / 2.0);
+            cairo_set_source_surface(cr, icon, text_x, ry + (row_h - icon_px) / 2.0);
             cairo_paint(cr);
-            text_x += icon_px + 10.0;
+            text_x += icon_px + 12.0;
         }
         cairo_set_source_rgba(cr, th->foreground.r, th->foreground.g, th->foreground.b,
                               i == lp->selected ? 1.0 : 0.85);
         pango_layout_set_text(lp->layout, name, -1);
-        cairo_move_to(cr, text_x, ry + (LP_ROW_H - 4.0 - 16.0) / 2.0);
+        cairo_move_to(cr, text_x, ry + (row_h - 16.0) / 2.0);
         pango_cairo_show_layout(cr, lp->layout);
     }
 

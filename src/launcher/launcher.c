@@ -20,24 +20,26 @@ struct launcher {
     /* icon cache: entry index -> decoded surface (lazily filled) */
     cairo_surface_t *icons[ICON_CACHE_SLOTS];
     int icon_idx[ICON_CACHE_SLOTS];
+    int icon_px[ICON_CACHE_SLOTS];
     int icon_n;
 };
 
-cairo_surface_t *launcher_icon_for(struct launcher *l, int idx)
+/* The surface is decoded at exactly the size the caller paints, otherwise a
+ * 48px PNG would land on top of the label that only reserved 22px. */
+cairo_surface_t *launcher_icon_for(struct launcher *l, int idx, int px)
 {
     if (!l || idx < 0 || idx >= l->db.count) return NULL;
+    if (px <= 0) px = 22;
     for (int i = 0; i < l->icon_n; i++) {
-        if (l->icon_idx[i] == idx) return l->icons[i];
+        if (l->icon_idx[i] == idx && l->icon_px[i] == px) return l->icons[i];
     }
     if (l->icon_n >= ICON_CACHE_SLOTS) return NULL; /* cache full: draw text only */
     const char *name = l->db.entries[idx].icon;
-    cairo_surface_t *s = name[0] ? icon_load_surface(name, 48) : NULL;
+    cairo_surface_t *s = name[0] ? icon_load_surface(name, px) : NULL;
     l->icon_idx[l->icon_n] = idx;
+    l->icon_px[l->icon_n] = px;
     l->icons[l->icon_n] = s;
     l->icon_n++;
-    if (s) log_info("launcher icon: %s -> %dx%d", name, cairo_image_surface_get_width(s),
-                    cairo_image_surface_get_height(s));
-    else log_info("launcher icon: %s NOT FOUND", name);
     return s;
 }
 
