@@ -185,6 +185,8 @@ int main(int argc, char **argv)
     if (out_first) {
         dock = dock_create(&ctx, out_first, cfg);
         cc = control_center_create(&ctx, &cfg, out_first);
+        surface_mgr_add_panel(&mgr, control_center_surface(cc));
+        surface_mgr_set_control_center_toggle(&mgr, control_center_toggle_proxy, cc);
         osd = osd_create(&ctx, out_first);
         wp = wallpaper_create(&ctx, out_first);
     }

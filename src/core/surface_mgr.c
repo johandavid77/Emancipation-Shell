@@ -9,6 +9,7 @@
 #include "bar/workspaces.h"
 #include "launcher/launcher.h"
 #include "util/log.h"
+#include "control/control_center.h"
 #include "zwlr-layer-shell-v1-client-protocol.h"
 
 #include <cairo.h>
@@ -457,6 +458,12 @@ void surface_mgr_set_launcher_toggle(struct surface_mgr *mgr, surface_mgr_launch
     if (!mgr) return;
     mgr->on_launcher = fn;
     mgr->on_launcher_userdata = userdata;
+}
+
+void surface_mgr_set_control_center_toggle(struct surface_mgr *mgr, surface_mgr_launcher_fn fn, void *userdata)
+{
+    if (!mgr) return;
+    (void)fn; (void)userdata;
 }
 
 

@@ -79,6 +79,7 @@ void surface_mgr_set_launcher_toggle(struct surface_mgr *mgr, surface_mgr_launch
 void surface_mgr_add_panel(struct surface_mgr *mgr, struct panel *p);
 void surface_mgr_set_niri(struct surface_mgr *mgr, struct niri_ipc *n);
 void surface_mgr_set_calendar_toggle(struct surface_mgr *mgr, surface_mgr_launcher_fn fn, void *userdata);
+void surface_mgr_set_control_center_toggle(struct surface_mgr *mgr, surface_mgr_launcher_fn fn, void *userdata);
 struct output *surface_mgr_first_output(struct surface_mgr *mgr);
 /* Routes a keysym to the visible panel (launcher or calendar). */
 bool surface_mgr_handle_key(struct surface_mgr *mgr, uint32_t keysym, uint32_t mods);
