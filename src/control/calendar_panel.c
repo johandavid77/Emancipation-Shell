@@ -3,6 +3,7 @@
 #include "core/wayland.h"
 #include "config/config.h"
 #include "util/log.h"
+#include <xkbcommon/xkbcommon-keysyms.h>
 #include "calendar/ics.h"
 
 #include <pango/pangocairo.h>

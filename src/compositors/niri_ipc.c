@@ -294,6 +294,22 @@ static bool niri_request(const char *json)
     return ok;
 }
 
+bool niri_ipc_action(struct niri_ipc *c, const char *action)
+{
+    (void)c;
+    if (!action || !*action) return false;
+    char buf[192];
+    snprintf(buf, sizeof(buf), "{\"Action\":{\"%s\":{}}}\n", action);
+    bool ok = niri_request(buf);
+    log_info("niri action %s -> %s", action, ok ? "ok" : "failed");
+    return ok;
+}
+
+bool niri_ipc_toggle_overview(struct niri_ipc *c) { return niri_ipc_action(c, "ToggleOverview"); }
+bool niri_ipc_screenshot(struct niri_ipc *c) { return niri_ipc_action(c, "Screenshot"); }
+bool niri_ipc_power_off_monitors(struct niri_ipc *c) { return niri_ipc_action(c, "PowerOffMonitors"); }
+bool niri_ipc_load_config(struct niri_ipc *c) { return niri_ipc_action(c, "LoadConfigFile"); }
+
 bool niri_ipc_focus(struct niri_ipc *c, uint64_t id)
 {
     (void)c;

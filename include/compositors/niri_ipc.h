@@ -43,5 +43,13 @@ int niri_ipc_window_count(const struct niri_ipc *c);
 const struct niri_window *niri_ipc_window(const struct niri_ipc *c, int idx);
 bool niri_ipc_focus(struct niri_ipc *c, uint64_t id);
 bool niri_ipc_close(struct niri_ipc *c, uint64_t id);
+/* Generic action passthrough, e.g. niri_ipc_action(c, "ToggleOverview").
+ * niri's action set has no volume or brightness entries, so those backends
+ * have to come from pipewire / sysfs instead. */
+bool niri_ipc_action(struct niri_ipc *c, const char *action);
+bool niri_ipc_toggle_overview(struct niri_ipc *c);
+bool niri_ipc_screenshot(struct niri_ipc *c);
+bool niri_ipc_power_off_monitors(struct niri_ipc *c);
+bool niri_ipc_load_config(struct niri_ipc *c);
 
 #endif /* EMANCIPATION_NIRI_IPC_H */

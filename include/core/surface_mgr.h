@@ -82,6 +82,7 @@ void surface_mgr_set_calendar_toggle(struct surface_mgr *mgr, surface_mgr_launch
 struct output *surface_mgr_first_output(struct surface_mgr *mgr);
 /* Routes a keysym to the visible panel (launcher or calendar). */
 bool surface_mgr_handle_key(struct surface_mgr *mgr, uint32_t keysym, uint32_t mods);
+void surface_mgr_hide_all_panels(struct surface_mgr *mgr);
 
 /* Pointer routing (from seat.c). Return true if a clickable item is under x. */
 bool surface_mgr_pointer_motion(struct surface_mgr *mgr, struct wl_surface *surf, double x, double y);

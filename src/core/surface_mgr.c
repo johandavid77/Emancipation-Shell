@@ -359,6 +359,15 @@ void surface_mgr_pointer_click(struct surface_mgr *mgr, struct wl_surface *surf,
         if (pn->click) pn->click(pn, x, y);
         return;
     }
+    /* Click outside any panel: close all panels */
+    if (mgr->n_panels > 0) {
+        for (int i = 0; i < mgr->n_panels; i++) {
+            if (mgr->panels[i] && panel_is_visible(mgr->panels[i])) {
+                surface_mgr_hide_all_panels(mgr);
+                return;
+            }
+        }
+    }
     struct layer_surface *l = find_by_surface(mgr, surf);
     if (!l) return;
     const struct bar_hit *hit = bar_hit_at(&l->hits, x);
@@ -448,4 +457,16 @@ void surface_mgr_set_launcher_toggle(struct surface_mgr *mgr, surface_mgr_launch
     if (!mgr) return;
     mgr->on_launcher = fn;
     mgr->on_launcher_userdata = userdata;
+}
+
+
+void surface_mgr_hide_all_panels(struct surface_mgr *mgr)
+{
+    if (!mgr) return;
+    for (int i = 0; i < mgr->n_panels; i++) {
+        struct panel *p = mgr->panels[i];
+        if (p && panel_is_visible(p)) {
+            panel_hide(p);
+        }
+    }
 }

@@ -6,6 +6,7 @@
 #include "util/log.h"
 
 #include <pango/pangocairo.h>
+#include <xkbcommon/xkbcommon-keysyms.h>
 #include <stdlib.h>
 #include <string.h>
 
