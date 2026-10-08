@@ -184,7 +184,7 @@ int main(int argc, char **argv)
     struct wallpaper *wp = NULL;
     if (out_first) {
         dock = dock_create(&ctx, out_first, cfg);
-        cc = control_center_create(&ctx, out_first);
+        cc = control_center_create(&ctx, &cfg, out_first);
         osd = osd_create(&ctx, out_first);
         wp = wallpaper_create(&ctx, out_first);
     }

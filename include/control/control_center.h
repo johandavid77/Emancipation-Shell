@@ -6,13 +6,12 @@
 struct control_center;
 struct wayland_ctx;
 struct output;
+struct config;
 
-struct control_center *control_center_create(struct wayland_ctx *ctx, struct output *out);
+struct control_center *control_center_create(struct wayland_ctx *ctx, const struct config **cfg,
+                                             struct output *out);
 void control_center_destroy(struct control_center *cc);
-void control_center_show(struct control_center *cc);
-void control_center_hide(struct control_center *cc);
-void control_center_toggle(struct control_center *cc);
-bool control_center_is_visible(struct control_center *cc);
-void control_center_set_toggle(struct control_center *cc, const char *name, bool enabled);
+struct panel *control_center_surface(struct control_center *cc);
+void control_center_toggle_proxy(void *userdata);
 
 #endif /* EMANCIPATION_CONTROL_CENTER_H */

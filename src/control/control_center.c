@@ -1,89 +1,94 @@
 #include "control/control_center.h"
 #include "core/output.h"
+#include "core/panel.h"
+#include "config/config.h"
 #include "util/log.h"
+#include <pango/pangocairo.h>
 #include <stdlib.h>
 #include <string.h>
+#include <xkbcommon/xkbcommon-keysyms.h>
+
+#define CC_W 380
+#define CC_H 460
+#define CC_PAD 16.0
+#define CC_ROW_H 36.0
+
+enum cc_section { CC_HOME, CC_WINDOWS, CC_SYSTEM, CC_MAX };
 
 struct control_center {
-    struct wayland_ctx *ctx;
-    struct output *out;
-    bool visible;
-    bool wifi;
-    bool bluetooth;
-    bool dark_mode;
-    bool mute;
-    int power_profile;
+    struct panel panel;
+    struct output *fallback_out;
+    const struct config *cfg;
+    enum cc_section section;
+    int selected_idx;
+    char title[64];
 };
 
-struct control_center *control_center_create(struct wayland_ctx *ctx, struct output *out)
+
+
+static void cc_draw(struct panel *p, cairo_t *cr, int w, int h)
 {
-    if (!ctx || !out) return NULL;
+    (void)p;
+    cairo_set_source_rgba(cr, 0.1, 0.1, 0.1, 0.96);
+    cairo_paint(cr);
+}
+
+static bool cc_key(struct panel *p, uint32_t keysym, uint32_t mods)
+{
+    (void)mods;
+    struct control_center *cc = p->userdata;
+    if (keysym == XKB_KEY_Escape) {
+        panel_hide(p);
+        return true;
+    }
+    return true;
+}
+
+static bool cc_click(struct panel *p, double x, double y)
+{
+    (void)p; (void)x; (void)y;
+    return true;
+}
+
+static void cc_motion(struct panel *p, double x, double y)
+{
+    (void)p; (void)x; (void)y;
+}
+
+struct control_center *control_center_create(struct wayland_ctx *ctx, const struct config **cfg,
+                                             struct output *out)
+{
+    (void)cfg;
     struct control_center *cc = calloc(1, sizeof(*cc));
     if (!cc) return NULL;
-    cc->ctx = ctx;
-    cc->out = out;
-    cc->visible = false;
-    cc->wifi = true;
-    cc->bluetooth = false;
-    cc->dark_mode = false;
-    cc->mute = false;
-    cc->power_profile = 0;
-    log_debug("control center created");
+    panel_init(&cc->panel, ctx);
+    cc->cfg = cfg ? *cfg : NULL;
+    cc->fallback_out = out;
+    panel_set_callbacks(&cc->panel, cc_draw, cc_key, cc_click, cc_motion, cc);
+    log_info("control center created");
     return cc;
 }
 
 void control_center_destroy(struct control_center *cc)
 {
     if (!cc) return;
+    panel_fini(&cc->panel);
     free(cc);
 }
 
-void control_center_show(struct control_center *cc)
+struct panel *control_center_surface(struct control_center *cc)
 {
+    return cc ? &cc->panel : NULL;
+}
+
+void control_center_toggle_proxy(void *userdata)
+{
+    struct control_center *cc = userdata;
     if (!cc) return;
-    cc->visible = true;
-    log_info("control center shown (slide-in)");
-}
-
-void control_center_hide(struct control_center *cc)
-{
-    if (!cc) return;
-    cc->visible = false;
-    log_info("control center hidden");
-}
-
-void control_center_toggle(struct control_center *cc)
-{
-    if (!cc) return;
-    if (cc->visible) control_center_hide(cc);
-    else control_center_show(cc);
-}
-
-bool control_center_is_visible(struct control_center *cc)
-{
-    if (!cc) return false;
-    return cc->visible;
-}
-
-void control_center_set_toggle(struct control_center *cc, const char *name, bool enabled)
-{
-    if (!cc || !name) return;
-    if (strcmp(name, "wifi") == 0) {
-        cc->wifi = enabled;
-        log_info("wifi %s (nm/connman)", enabled ? "on" : "off");
-    } else if (strcmp(name, "bluetooth") == 0) {
-        cc->bluetooth = enabled;
-        log_info("bluetooth %s (bluez)", enabled ? "on" : "off");
-    } else if (strcmp(name, "dark_mode") == 0) {
-        cc->dark_mode = enabled;
-        log_info("dark_mode %s", enabled ? "on" : "off");
-    } else if (strcmp(name, "mute") == 0) {
-        cc->mute = enabled;
-        log_info("audio mute %s", enabled ? "on" : "off");
-    } else if (strcmp(name, "power_profile") == 0) {
-        cc->power_profile = enabled ? 1 : 0;
-        log_info("power_profile %d", cc->power_profile);
-    } else {
-        log_warn("unknown toggle: %s", name);
+    if (panel_is_visible(&cc->panel)) {
+        panel_hide(&cc->panel);
+        return;
     }
+    struct output *out = cc->panel.out ? cc->panel.out : cc->fallback_out;
+    if (!panel_show(&cc->panel, out, CC_W, CC_H)) log_warn("control center: show failed");
 }
