@@ -188,6 +188,7 @@ int main(int argc, char **argv)
         surface_mgr_add_panel(&mgr, control_center_surface(cc));
         surface_mgr_set_control_center_toggle(&mgr, control_center_toggle_proxy, cc);
         osd = osd_create(&ctx, out_first);
+        surface_mgr_add_panel(&mgr, (struct panel*)osd); /* osd is panel-based */
         wp = wallpaper_create(&ctx, out_first);
     }
     struct notify_daemon *nd = notify_daemon_create(&ctx);
