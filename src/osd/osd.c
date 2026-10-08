@@ -5,6 +5,7 @@
 #include <pango/pangocairo.h>
 #include <stdlib.h>
 #include <string.h>
+#include <time.h>
 
 #define OSD_W 280
 #define OSD_H 60
@@ -18,6 +19,16 @@ struct osd {
 };
 
 
+
+static void ts_now(struct timespec *ts)
+{
+    clock_gettime(CLOCK_MONOTONIC, ts);
+}
+
+static long ts_diff_ms(const struct timespec *a, const struct timespec *b)
+{
+    return (b->tv_sec - a->tv_sec) * 1000 + (b->tv_nsec - a->tv_nsec) / 1000000;
+}
 
 static void osd_draw(struct panel *p, cairo_t *cr, int w, int h)
 {
