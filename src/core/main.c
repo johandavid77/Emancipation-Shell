@@ -5,6 +5,7 @@ static int last_cpu=-2,last_ram=-2,last_bat=-2,last_chg=-1;
 #include <stdlib.h>
 #include <signal.h>
 #include <string.h>
+#include <xkbcommon/xkbcommon-keysyms.h>
 #include <errno.h>
 #include <stddef.h>
 #include <locale.h>
@@ -93,6 +94,8 @@ static void report_display_error(struct wl_display *display)
 
 static bool panel_keys_proxy(uint32_t keysym, uint32_t mods, void *userdata)
 {
+    (void)mods;
+    /* simple volume/brightness detection if XF86 keys come through; osd handled elsewhere later */
     return surface_mgr_handle_key((struct surface_mgr *)userdata, keysym, mods);
 }
 
