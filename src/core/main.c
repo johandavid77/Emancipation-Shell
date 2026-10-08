@@ -263,6 +263,7 @@ int main(int argc, char **argv)
                 last_cpu=sys.cpu_pct; last_ram=sys.ram_pct; last_bat=sys.bat_pct; last_chg=sys.bat_charging?1:0;
                 surface_mgr_mark_dirty_all(&mgr);
             }
+            if (osd) osd_tick(osd);
         }
         if (fds[FD_CFG].revents & POLLIN) {
             config_watcher_dispatch(cw);

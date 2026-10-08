@@ -18,5 +18,6 @@ void osd_destroy(struct osd *o);
 void osd_show(struct osd *o, enum osd_type t, int value);
 void osd_hide(struct osd *o);
 bool osd_is_visible(struct osd *o);
+void osd_tick(struct osd *o);
 
 #endif /* EMANCIPATION_OSD_H */

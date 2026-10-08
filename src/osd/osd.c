@@ -91,14 +91,14 @@ void osd_show(struct osd *o, enum osd_type t, int value)
     if (!o) return;
     o->type = t;
     o->value = value > 100 ? 100 : (value < 0 ? 0 : value);
+    ts_now(&o->hide_at);
+    o->hide_at.tv_sec += 2;
     struct output *out = o->panel.out ? o->panel.out : o->fallback_out;
     if (!panel_show(&o->panel, out, OSD_W, OSD_H)) {
         log_warn("osd: show failed");
         return;
     }
-    /* center near top */
-    /* panel_show centers; nudge? easier to call panel_show as is; compositor places center */
-    log_info("osd %s: %d%%", t == OSD_VOLUME ? "volume" : "brightness", o->value);
+    log_info("osd %s: %d%% (auto-hide ~2s)", t == OSD_VOLUME ? "volume" : "brightness", o->value);
 }
 
 void osd_hide(struct osd *o)
@@ -112,4 +112,16 @@ bool osd_is_visible(struct osd *o)
 {
     if (!o) return false;
     return panel_is_visible(&o->panel);
+}
+
+void osd_tick(struct osd *o)
+{
+    if (!o || !panel_is_visible(&o->panel)) return;
+    struct timespec now;
+    ts_now(&now);
+    if ((now.tv_sec > o->hide_at.tv_sec) ||
+        (now.tv_sec == o->hide_at.tv_sec && now.tv_nsec >= o->hide_at.tv_nsec)) {
+        panel_hide(&o->panel);
+        o->type = OSD_NONE;
+    }
 }
