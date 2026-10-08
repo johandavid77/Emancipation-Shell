@@ -107,6 +107,7 @@ srcs = [
   'src/osd/osd.c',
   'src/notify/notification.c',
   'src/notify/notify_daemon.c',
+  'src/notify/toast.c',
   'src/session/lock_screen.c',
   'src/session/session_actions.c',
   'src/wallpaper/wallpaper.c',
