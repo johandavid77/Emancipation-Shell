@@ -64,7 +64,7 @@ struct osd *osd_create(struct wayland_ctx *ctx, struct output *out)
     o->fallback_out = out;
     o->type = OSD_NONE;
     panel_set_callbacks(&o->panel, osd_draw, osd_key, osd_click, osd_motion, o);
-    log_debug("osd created");
+    log_info("osd created");
     return o;
 }
 
