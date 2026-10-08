@@ -3,6 +3,8 @@
 
 #include <stdbool.h>
 
+struct toast_panel;
+
 struct notify_daemon;
 struct wayland_ctx;
 
