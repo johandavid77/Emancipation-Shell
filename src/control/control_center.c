@@ -28,10 +28,15 @@ struct control_center {
 
 static void cc_draw(struct panel *p, cairo_t *cr, int w, int h)
 {
-    (void)p;
-    cairo_set_source_rgba(cr, 0.1, 0.1, 0.1, 0.96);
+    struct control_center *cc = p->userdata;
+    cairo_set_source_rgba(cr, 0.12, 0.12, 0.12, 0.98);
     cairo_paint(cr);
+    cairo_set_source_rgba(cr, 1,1,1,0.9);
+    cairo_move_to(cr, CC_PAD, CC_PAD + 14);
+    const char *titles[] = {"Home", "Windows", "System"};
+    cairo_show_text(cr, titles[cc->section % CC_MAX]);
 }
+
 
 static bool cc_key(struct panel *p, uint32_t keysym, uint32_t mods)
 {
