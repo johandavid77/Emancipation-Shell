@@ -2,6 +2,9 @@
 #include "util/log.h"
 #include "notify/notification.h"
 #include <stdlib.h>
+#include <dbus/dbus.h>
+#include <string.h>
+#include <unistd.h>
 
 struct notify_daemon {
     struct wayland_ctx *ctx;
