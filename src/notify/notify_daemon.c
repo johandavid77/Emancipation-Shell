@@ -33,3 +33,9 @@ bool notify_daemon_is_running(struct notify_daemon *nd)
     if (!nd) return false;
     return nd->running;
 }
+
+struct notification_store *notify_daemon_store(struct notify_daemon *nd)
+{
+    if (!nd) return NULL;
+    return &nd->store;
+}
