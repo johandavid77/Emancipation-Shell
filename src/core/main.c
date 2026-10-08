@@ -34,6 +34,7 @@ static int last_cpu=-2,last_ram=-2,last_bat=-2,last_chg=-1;
 #include "control/control_center.h"
 #include "osd/osd.h"
 #include "notify/notify_daemon.h"
+#include "notify/toast.h"
 #include "session/lock_screen.h"
 #include "session/session_actions.h"
 #include "wallpaper/wallpaper.h"
@@ -93,6 +94,7 @@ static void report_display_error(struct wl_display *display)
 }
 
 static struct osd *osd_global = NULL;
+static struct toast_panel *toast_global = NULL;
 static bool panel_keys_proxy(uint32_t keysym, uint32_t mods, void *userdata)
 {
     (void)mods;
@@ -214,6 +216,8 @@ int main(int argc, char **argv)
         osd = osd_create(&ctx, out_first);
         osd_global = osd;
         surface_mgr_add_panel(&mgr, (struct panel*)osd); /* osd is panel-based */
+        toast_global = toast_create(&ctx, out_first);
+        if (toast_global) surface_mgr_add_panel(&mgr, (struct panel*)toast_global);
         wp = wallpaper_create(&ctx, out_first);
     }
     struct notify_daemon *nd = notify_daemon_create(&ctx);
@@ -286,6 +290,7 @@ int main(int argc, char **argv)
                 surface_mgr_mark_dirty_all(&mgr);
             }
             if (osd) osd_tick(osd);
+            if (toast_global) toast_tick(toast_global);
         }
         if (fds[FD_CFG].revents & POLLIN) {
             config_watcher_dispatch(cw);
