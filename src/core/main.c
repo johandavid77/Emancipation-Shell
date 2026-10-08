@@ -92,11 +92,32 @@ static void report_display_error(struct wl_display *display)
     }
 }
 
+static struct osd *osd_global = NULL;
 static bool panel_keys_proxy(uint32_t keysym, uint32_t mods, void *userdata)
 {
     (void)mods;
-    /* simple volume/brightness detection if XF86 keys come through; osd handled elsewhere later */
-    return surface_mgr_handle_key((struct surface_mgr *)userdata, keysym, mods);
+    struct surface_mgr *mgr = (struct surface_mgr *)userdata;
+    if (keysym == XKB_KEY_XF86AudioRaiseVolume) {
+        if (osd_global) { osd_show(osd_global, OSD_VOLUME, 80); osd_tick(osd_global); }
+        return true;
+    }
+    if (keysym == XKB_KEY_XF86AudioLowerVolume) {
+        if (osd_global) { osd_show(osd_global, OSD_VOLUME, 40); osd_tick(osd_global); }
+        return true;
+    }
+    if (keysym == XKB_KEY_XF86AudioMute) {
+        if (osd_global) { osd_show(osd_global, OSD_VOLUME, 0); osd_tick(osd_global); }
+        return true;
+    }
+    if (keysym == XKB_KEY_XF86MonBrightnessUp) {
+        if (osd_global) { osd_show(osd_global, OSD_BRIGHTNESS, 90); osd_tick(osd_global); }
+        return true;
+    }
+    if (keysym == XKB_KEY_XF86MonBrightnessDown) {
+        if (osd_global) { osd_show(osd_global, OSD_BRIGHTNESS, 30); osd_tick(osd_global); }
+        return true;
+    }
+    return surface_mgr_handle_key(mgr, keysym, mods);
 }
 
 int main(int argc, char **argv)
@@ -191,6 +212,7 @@ int main(int argc, char **argv)
         surface_mgr_add_panel(&mgr, control_center_surface(cc));
         surface_mgr_set_control_center_toggle(&mgr, control_center_toggle_proxy, cc);
         osd = osd_create(&ctx, out_first);
+        osd_global = osd;
         surface_mgr_add_panel(&mgr, (struct panel*)osd); /* osd is panel-based */
         wp = wallpaper_create(&ctx, out_first);
     }
