@@ -4,6 +4,7 @@ project('emancipation-shell', 'c',
 )
 
 wl_client = dependency('wayland-client', required: true)
+dbus_dep = dependency('dbus-1', required: true)
 sc = find_program('wayland-scanner', required: true)
 
 layer_xml = files('protocols/wlr-layer-shell-unstable-v1.xml')
@@ -128,6 +129,7 @@ executable('emancipation-shell',
   include_directories: [inc_dirs, gen_inc, include_directories('src')],
   dependencies: [
     wl_client,
+    dbus_dep,
     dependency('cairo', required: true),
     dependency('pangocairo', required: true),
     dependency('xkbcommon', required: true),
