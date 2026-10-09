@@ -47,6 +47,7 @@ void config_defaults(struct config *cfg)
     add_module(&cfg->bar, BAR_END, "cpu");
     add_module(&cfg->bar, BAR_END, "ram");
     add_module(&cfg->bar, BAR_END, "battery");
+    add_module(&cfg->bar, BAR_END, "tray");
     add_module(&cfg->bar, BAR_END, "date");
 
     /* builtin "Noctalia" dark palette (theme/builtin_palettes.cpp) */
