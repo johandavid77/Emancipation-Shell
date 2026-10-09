@@ -221,8 +221,12 @@ static double w_network(struct draw_env *e, double x, int draw)
 
 static double w_tray(struct draw_env *e, double x, int draw)
 {
-    (void)e; (void)draw; (void)x;
-    return 6.0; /* small placeholder */
+    double w = 20.0;
+    if (!draw) return w;
+    set_rgba(e->cr, e->th->on_surface_variant, 0.5);
+    cairo_rectangle(e->cr, x+2, e->h*0.25, w-4, e->h*0.5);
+    cairo_stroke(e->cr);
+    return w;
 }
 
 static double w_kbd(struct draw_env *e, double x, int draw)
