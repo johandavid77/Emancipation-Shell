@@ -5,6 +5,7 @@
 #include "launcher/desktop.h"
 #include "launcher/icons.h"
 #include "compositors/niri_ipc.h"
+#include "systray/systray.h"
 #include "config/config.h"
 #include <pango/pangocairo.h>
 #include <stdio.h>
@@ -220,8 +221,8 @@ static double w_network(struct draw_env *e, double x, int draw)
 
 static double w_tray(struct draw_env *e, double x, int draw)
 {
-    (void)draw;
-    return 0; /* not implemented */
+    (void)e; (void)draw; (void)x;
+    return 6.0; /* small placeholder */
 }
 
 static double w_kbd(struct draw_env *e, double x, int draw)
