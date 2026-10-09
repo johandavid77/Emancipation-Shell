@@ -164,7 +164,9 @@ static double w_taskbar(struct draw_env *e, double x, int draw)
             cairo_arc(e->cr, ix + icon_px - 3, 4, 2.5, 0, 2 * G_PI);
             cairo_fill(e->cr);
         }
-        cairo_surface_t *icon = icon_load_surface(w->app_id, (int)icon_px);
+        char *ip = icon_resolve_path(w->app_id);
+        cairo_surface_t *icon = ip ? icon_load_surface(ip, (int)icon_px) : (w->app_id[0] ? icon_load_surface(w->app_id, (int)icon_px) : NULL);
+        free(ip);
         if (icon) {
             cairo_set_source_surface(e->cr, icon, ix, (e->h - icon_px) / 2.0);
             cairo_paint(e->cr);
