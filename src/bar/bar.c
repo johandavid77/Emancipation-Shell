@@ -149,8 +149,8 @@ static double w_taskbar(struct draw_env *e, double x, int draw)
         if (!w) continue;
         double ix = x + i * (icon_px + gap);
         if (e->hits) {
-            struct bar_hit h = {x + total / count * i, x + total / count * (i + 1),
-                               BAR_HIT_TASKBAR, (void *)(intptr_t) i};
+            struct bar_hit h = {ix, ix + icon_px,
+                               BAR_HIT_TASKBAR, (void *)(intptr_t)i};
             if (e->hits->n < BAR_MAX_HITS) e->hits->h[e->hits->n++] = h;
         }
         /* focused windows get a small underline, urgent ones a warning dot */
