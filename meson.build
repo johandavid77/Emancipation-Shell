@@ -113,6 +113,7 @@ srcs = [
   'src/wallpaper/wallpaper.c',
   'src/hotkeys/hotkeys.c',
   'src/ipc/ipc.c',
+  'src/systray/systray.c',
   'src/clipboard/clipboard.c',
   'src/render/renderer.c',
   'src/plugins/plugin.c',
