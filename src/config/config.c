@@ -43,6 +43,7 @@ void config_defaults(struct config *cfg)
     snprintf(cfg->bar.date_format, sizeof(cfg->bar.date_format), "%%a %%d %%b");
     add_module(&cfg->bar, BAR_START, "launcher");
     add_module(&cfg->bar, BAR_START, "workspaces");
+    add_module(&cfg->bar, BAR_START, "taskbar");
     add_module(&cfg->bar, BAR_CENTER, "clock");
     add_module(&cfg->bar, BAR_END, "cpu");
     add_module(&cfg->bar, BAR_END, "ram");
