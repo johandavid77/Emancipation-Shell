@@ -122,6 +122,7 @@ static void layer_draw(struct layer_surface *l)
         .wm = l->mgr->wm,
         .sys = l->mgr->sys,
         .niri = l->mgr->niri,
+        .systray = l->mgr->systray,
         .launcher = l->mgr->launcher,
         .output = l->out ? l->out->wl : NULL,
         .hover_x = l->hover_x,
@@ -299,6 +300,11 @@ void surface_mgr_request_redraw(struct surface_mgr *mgr)
 void surface_mgr_set_sysinfo(struct surface_mgr *mgr, const struct sysinfo_state *sys)
 {
     if (mgr) mgr->sys = sys;
+}
+
+void surface_mgr_set_systray(struct surface_mgr *mgr, struct systray *st)
+{
+    if (mgr) mgr->systray = st;
 }
 
 static struct panel *find_panel(struct surface_mgr *mgr, struct wl_surface *surf)

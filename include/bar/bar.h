@@ -10,6 +10,7 @@ struct workspace_manager;
 struct sysinfo_state;
 struct launcher;
 struct niri_ipc;
+struct systray;
 
 #define BAR_MAX_HITS 64
 
@@ -40,6 +41,7 @@ struct bar_ctx {
     struct niri_ipc *niri;    /* window list for the taskbar */
     struct workspace_manager *wm;
     const struct sysinfo_state *sys;
+    struct systray *systray;  /* status notifier items for the tray */
     struct launcher *launcher;
     struct wl_output *output;
     double hover_x; /* pointer x over this bar, < 0 when outside */

@@ -52,6 +52,7 @@ struct surface_mgr {
     const struct sysinfo_state *sys;
     struct launcher *launcher;
     struct niri_ipc *niri;
+    struct systray *systray;
 #define SURFACE_MGR_MAX_PANELS 4
     struct panel *panels[SURFACE_MGR_MAX_PANELS]; /* overlay panels, routed first for input */
     int n_panels;
@@ -78,7 +79,7 @@ void surface_mgr_set_launcher_toggle(struct surface_mgr *mgr, surface_mgr_launch
 /* Registers an overlay panel; input is routed to it before the bar. */
 void surface_mgr_add_panel(struct surface_mgr *mgr, struct panel *p);
 void surface_mgr_set_niri(struct surface_mgr *mgr, struct niri_ipc *n);
-void surface_mgr_set_calendar_toggle(struct surface_mgr *mgr, surface_mgr_launcher_fn fn, void *userdata);
+void surface_mgr_set_systray(struct surface_mgr *mgr, struct systray *st);void surface_mgr_set_calendar_toggle(struct surface_mgr *mgr, surface_mgr_launcher_fn fn, void *userdata);
 void surface_mgr_set_control_center_toggle(struct surface_mgr *mgr, surface_mgr_launcher_fn fn, void *userdata);
 struct output *surface_mgr_first_output(struct surface_mgr *mgr);
 /* Routes a keysym to the visible panel (launcher or calendar). */

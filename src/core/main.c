@@ -35,6 +35,7 @@ static int last_cpu=-2,last_ram=-2,last_bat=-2,last_chg=-1;
 #include "osd/osd.h"
 #include "notify/notify_daemon.h"
 #include "notify/toast.h"
+#include "systray/systray.h"
 #include "session/lock_screen.h"
 #include "session/session_actions.h"
 #include "wallpaper/wallpaper.h"
@@ -165,6 +166,9 @@ int main(int argc, char **argv)
         log_warn("config watcher could not be initialized, using defaults");
     }
     surface_mgr_set_sources(&mgr, cfg, wm);
+    sysinfo_init(&sys);
+    sysinfo_update(&sys);
+    surface_mgr_set_sysinfo(&mgr, &sys);
 
     ctx.seat = seat_create(&ctx, &mgr);
     struct registry_state reg_state;
@@ -226,6 +230,8 @@ int main(int argc, char **argv)
     struct hotkeys *hk = hotkeys_create();
     struct ipc_server *ipc = ipc_create(&ctx);
     struct clipboard *clip = clipboard_create(100);
+    struct systray *systray = systray_create(&ctx);
+    if (systray) surface_mgr_set_systray(&mgr, systray);
 
     struct sigaction sact;
     memset(&sact, 0, sizeof(sact));
@@ -237,12 +243,13 @@ int main(int argc, char **argv)
     int tfd = timerfd_create(CLOCK_REALTIME, TFD_NONBLOCK | TFD_CLOEXEC);
     if (tfd >= 0) arm_clock(tfd);
 
-    enum { FD_WL, FD_CLOCK, FD_CFG, FD_NIRI, FD_COUNT };
+    enum { FD_WL, FD_CLOCK, FD_CFG, FD_NIRI, FD_SYSTRAY, FD_COUNT };
     struct pollfd fds[FD_COUNT] = {
         [FD_WL] = { .fd = wl_display_get_fd(display), .events = POLLIN },
         [FD_CLOCK] = { .fd = tfd, .events = POLLIN },
         [FD_CFG] = { .fd = config_watcher_get_fd(cw), .events = POLLIN },
         [FD_NIRI] = { .fd = -1, .events = POLLIN },
+        [FD_SYSTRAY] = { .fd = systray ? systray_fd(systray) : -1, .events = POLLIN },
     };
 
     /* niri IPC feeds the taskbar; it is optional (other compositors) */
@@ -305,6 +312,10 @@ int main(int argc, char **argv)
                 }
             }
         }
+        if (systray && fds[FD_SYSTRAY].fd >= 0 &&
+            (fds[FD_SYSTRAY].revents & (POLLIN | POLLHUP))) {
+            if (systray_dispatch(systray)) surface_mgr_mark_dirty_all(&mgr);
+        }
         continue;
 wl_error:
         report_display_error(display);
@@ -315,6 +326,7 @@ wl_error:
     log_info("shutting down...");
     if (tfd >= 0) close(tfd);
     if (niri) niri_ipc_destroy(niri);
+    if (systray) systray_destroy(systray);
     if (clip) clipboard_destroy(clip);
     if (ipc) ipc_destroy(ipc);
     if (hk) hotkeys_destroy(hk);

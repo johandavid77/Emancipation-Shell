@@ -221,11 +221,21 @@ static double w_network(struct draw_env *e, double x, int draw)
 
 static double w_tray(struct draw_env *e, double x, int draw)
 {
-    double w = 20.0;
+    struct systray *st = e->ctx->systray;
+    if (!st) return 0;
+    int n = systray_item_count(st);
+    double w = n > 0 ? systray_width(st) : 18.0;
     if (!draw) return w;
-    set_rgba(e->cr, e->th->on_surface_variant, 0.5);
-    cairo_rectangle(e->cr, x+2, e->h*0.25, w-4, e->h*0.5);
-    cairo_stroke(e->cr);
+    if (n > 0) {
+        systray_draw(st, e->cr, x, e->h);
+    } else {
+        /* idle tray: three dots so the region is always visible */
+        set_rgba(e->cr, e->th->on_surface_variant, 0.9);
+        for (int i = 0; i < 3; i++) {
+            cairo_arc(e->cr, x + 3 + i * 5.5, e->h / 2.0, 1.6, 0, 2 * G_PI);
+            cairo_fill(e->cr);
+        }
+    }
     return w;
 }
 
@@ -266,16 +276,16 @@ static double widget(struct draw_env *e, const char *name, double x, int draw)
     if (strcmp(name, "workspaces") == 0) return w_workspaces(e, x, draw);
     if (strcmp(name, "clock") == 0) return w_time(e, x, draw, c->bar.clock_format, 1.0, BAR_HIT_CLOCK);
     if (strcmp(name, "date") == 0) return w_time(e, x, draw, c->bar.date_format, 0.8, BAR_HIT_DATE);
+    if (strcmp(name, "tray") == 0) return w_tray(e, x, draw);
+    if (strcmp(name, "kbd") == 0 || strcmp(name, "keyboard") == 0 || strcmp(name, "keyboard_layout") == 0) return w_kbd(e, x, draw);
+    if (strcmp(name, "taskbar") == 0) return w_taskbar(e, x, draw);
+    if (strcmp(name, "volume") == 0) return w_volume(e, x, draw);
+    if (strcmp(name, "network") == 0) return w_network(e, x, draw);
     if (!s) return 0;
     if (strcmp(name, "cpu") == 0) return w_metric(e, x, draw, "CPU", s->cpu_pct, NULL);
     if (strcmp(name, "ram") == 0) return w_metric(e, x, draw, "RAM", s->ram_pct, NULL);
     if (strcmp(name, "battery") == 0)
         return w_metric(e, x, draw, "BAT", s->bat_pct, s->bat_charging ? "+" : NULL);
-    if (strcmp(name, "volume") == 0) return w_volume(e, x, draw);
-    if (strcmp(name, "network") == 0) return w_network(e, x, draw);
-    if (strcmp(name, "tray") == 0) return w_tray(e, x, draw);
-    if (strcmp(name, "kbd") == 0 || strcmp(name, "keyboard") == 0 || strcmp(name, "keyboard_layout") == 0) return w_kbd(e, x, draw);
-    if (strcmp(name, "taskbar") == 0) return w_taskbar(e, x, draw);
     return 0; /* unknown module: ignored */
 }
 
