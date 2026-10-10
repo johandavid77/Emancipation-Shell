@@ -34,7 +34,7 @@ static bool write_all(int fd, const char *buf, size_t len)
 static void niri_resolve_socket(char *out, size_t outsz)
 {
     const char *env = getenv("NIRI_SOCKET");
-    if (env && *env) {
+    if (env && *env && access(env, F_OK) == 0) {
         snprintf(out, outsz, "%s", env);
         return;
     }
@@ -142,6 +142,47 @@ static bool json_str(const char *p, const char *end, const char *key, char *out,
     return true;
 }
 
+/* Reads one window object in [obj,q) into w. Returns false if it has no id. */
+static bool parse_window_obj(const char *obj, const char *q, struct niri_window *w)
+{
+    memset(w, 0, sizeof(*w));
+    json_u64(obj, q, "\"id\"", &w->id);
+    json_str(obj, q, "\"title\"", w->title, sizeof(w->title));
+    json_str(obj, q, "\"app_id\"", w->app_id, sizeof(w->app_id));
+    uint64_t ws = 0;
+    if (json_u64(obj, q, "\"workspace_id\"", &ws)) w->workspace_id = (int)ws;
+    json_bool(obj, q, "\"is_focused\"", &w->focused);
+    json_bool(obj, q, "\"is_urgent\"", &w->urgent);
+    return w->id != 0;
+}
+
+static bool upsert_window(struct niri_ipc *c, const struct niri_window *w)
+{
+    for (int i = 0; i < c->n_windows; i++) {
+        if (c->windows[i].id == w->id) {
+            if (memcmp(&c->windows[i], w, sizeof(*w)) == 0) return false;
+            c->windows[i] = *w;
+            return true;
+        }
+    }
+    if (c->n_windows >= NIRI_MAX_WINDOWS) return false;
+    c->windows[c->n_windows++] = *w;
+    return true;
+}
+
+static bool remove_window(struct niri_ipc *c, uint64_t id)
+{
+    for (int i = 0; i < c->n_windows; i++) {
+        if (c->windows[i].id == id) {
+            memmove(&c->windows[i], &c->windows[i + 1],
+                    (size_t)(c->n_windows - i - 1) * sizeof(c->windows[0]));
+            c->n_windows--;
+            return true;
+        }
+    }
+    return false;
+}
+
 /* Walks the "windows":[ ... ] array and rebuilds the list. */
 static bool parse_windows(struct niri_ipc *c, const char *p, const char *end)
 {
@@ -164,15 +205,7 @@ static bool parse_windows(struct niri_ipc *c, const char *p, const char *end)
         }
         if (q >= end) break;
         struct niri_window w;
-        memset(&w, 0, sizeof(w));
-        json_u64(obj, q, "\"id\"", &w.id);
-        json_str(obj, q, "\"title\"", w.title, sizeof(w.title));
-        json_str(obj, q, "\"app_id\"", w.app_id, sizeof(w.app_id));
-        uint64_t ws = 0;
-        if (json_u64(obj, q, "\"workspace_id\"", &ws)) w.workspace_id = (int)ws;
-        json_bool(obj, q, "\"is_focused\"", &w.focused);
-        json_bool(obj, q, "\"is_urgent\"", &w.urgent);
-        if (w.id != 0) fresh[n++] = w;
+        if (parse_window_obj(obj, q, &w)) fresh[n++] = w;
         arr = q + 1;
     }
 
@@ -237,8 +270,31 @@ bool niri_ipc_dispatch(struct niri_ipc *c)
             if (c->rbuf[i] != '\n') continue;
             c->rbuf[i] = '\0';
             const char *line = c->rbuf + start;
-            if (strstr(line, "WindowsChanged")) {
+            if (strstr(line, "\"WindowsChanged\"")) {
                 if (parse_windows(c, line, line + strlen(line))) changed = true;
+            } else if (strstr(line, "\"WindowOpenedOrChanged\"")) {
+                const char *wp = strstr(line, "\"window\"");
+                const char *obj = wp ? strchr(wp, '{') : NULL;
+                if (obj) {
+                    const char *oend = line + strlen(line);
+                    int depth = 0;
+                    const char *q = obj;
+                    for (; q < oend; q++) {
+                        if (*q == '{') depth++;
+                        else if (*q == '}') { depth--; if (depth == 0) break; }
+                    }
+                    struct niri_window w;
+                    if (q < oend && parse_window_obj(obj, q, &w) &&
+                        upsert_window(c, &w))
+                        changed = true;
+                }
+            } else if (strstr(line, "\"WindowClosed\"")) {
+                const char *idp = strstr(line, "\"id\"");
+                if (idp) {
+                    while (*idp && (*idp < '0' || *idp > '9')) idp++;
+                    if (*idp && remove_window(c, strtoull(idp, NULL, 10)))
+                        changed = true;
+                }
             }
             start = i + 1;
         }
@@ -273,7 +329,7 @@ static bool niri_request(const char *json)
 {
     const char *env = getenv("NIRI_SOCKET");
     char path[256];
-    if (env && *env) snprintf(path, sizeof(path), "%s", env);
+    if (env && *env && access(env, F_OK) == 0) snprintf(path, sizeof(path), "%s", env);
     else niri_resolve_socket(path, sizeof(path));
     if (!path[0]) return false;
     int fd = socket(AF_UNIX, SOCK_STREAM | SOCK_CLOEXEC, 0);
