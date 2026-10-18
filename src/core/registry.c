@@ -6,6 +6,10 @@
 #include "util/log.h"
 #include "zwlr-layer-shell-v1-client-protocol.h"
 #include "ext-workspace-v1-client-protocol.h"
+#include "wlr-data-control-unstable-v1-client-protocol.h"
+#include "ext-idle-notify-v1-client-protocol.h"
+#include "idle-inhibit-unstable-v1-client-protocol.h"
+#include "ext-session-lock-v1-client-protocol.h"
 #include <stdlib.h>
 #include <string.h>
 
@@ -37,6 +41,34 @@ static void registry_global(void *data, struct wl_registry *registry,
         state->ctx->cursor_shape_mgr = (struct wp_cursor_shape_manager_v1 *)
             wl_registry_bind(registry, name, &wp_cursor_shape_manager_v1_interface, 1);
         log_info("cursor_shape_manager bound");
+        return;
+    } else if (strcmp(interface, "wl_data_device_manager") == 0) {
+        state->ctx->data_device_manager = (struct wl_data_device_manager *)
+            wl_registry_bind(registry, name, &wl_data_device_manager_interface,
+                             version < 3 ? version : 3);
+        log_info("data_device_manager bound");
+        return;
+    } else if (strcmp(interface, "zwlr_data_control_manager_v1") == 0) {
+        state->ctx->data_control_mgr = (struct zwlr_data_control_manager_v1 *)
+            wl_registry_bind(registry, name, &zwlr_data_control_manager_v1_interface,
+                             version < 2 ? version : 2);
+        log_info("data_control_manager bound");
+        return;
+    } else if (strcmp(interface, "ext_idle_notifier_v1") == 0) {
+        state->ctx->idle_notifier = (struct ext_idle_notifier_v1 *)
+            wl_registry_bind(registry, name, &ext_idle_notifier_v1_interface,
+                             version < 2 ? version : 2);
+        log_info("idle_notifier bound");
+        return;
+    } else if (strcmp(interface, "zwp_idle_inhibit_manager_v1") == 0) {
+        state->ctx->idle_inhibit_mgr = (struct zwp_idle_inhibit_manager_v1 *)
+            wl_registry_bind(registry, name, &zwp_idle_inhibit_manager_v1_interface, 1);
+        log_info("idle_inhibit_manager bound");
+        return;
+    } else if (strcmp(interface, "ext_session_lock_manager_v1") == 0) {
+        state->ctx->session_lock_mgr = (struct ext_session_lock_manager_v1 *)
+            wl_registry_bind(registry, name, &ext_session_lock_manager_v1_interface, 1);
+        log_info("session_lock_manager bound");
         return;
     } else if (strcmp(interface, "zwlr_layer_shell_v1") == 0) {
         state->ctx->layer_shell = (struct zwlr_layer_shell_v1 *)wl_registry_bind(registry, name,

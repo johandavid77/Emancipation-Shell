@@ -18,3 +18,27 @@ a = 1.0
 [font]
 family = "Sans"
 size = 12
+
+# Wallpaper / backdrop rendered on the background layer.
+# fill modes: "crop" (default), "fit", "stretch", "center", "repeat", "span"
+# dir: carpeta con imagenes; si path esta vacio se toma la primera imagen de
+#      dir (o de /usr/share/wallpapers / /usr/share/backgrounds).
+[wallpaper]
+enabled = true
+path = ""
+dir = "/usr/share/wallpapers"
+fill = "crop"
+
+# Bloqueo de pantalla y apagado de monitores por inactividad.
+# lock_timeout: segundos antes de bloquear (0 = nunca).
+# screen_off_timeout: segundos antes de apagar monitores (0 = nunca).
+[idle]
+enabled = true
+lock_timeout = 300
+screen_off_timeout = 600
+
+# Interruptor maestro del bloqueo de pantalla.
+# enabled = false desactiva el bloqueo por completo (inactividad, manual,
+# atajos y centro de control).
+[lock]
+enabled = true

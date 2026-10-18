@@ -68,6 +68,9 @@ extra_protos = []
 
 foreach proto : [['cursor-shape-v1', 'protocols/cursor-shape-v1.xml'],
                  ['tablet-unstable-v2', 'protocols/tablet-unstable-v2.xml'],
+                 ['wlr-data-control-unstable-v1', 'protocols/wlr-data-control-unstable-v1.xml'],
+                 ['ext-idle-notify-v1', 'protocols/ext-idle-notify-v1.xml'],
+                 ['idle-inhibit-unstable-v1', 'protocols/idle-inhibit-unstable-v1.xml'],
                  ['ext-foreign-toplevel-list-v1', 'protocols/ext-foreign-toplevel-list-v1.xml']]
   extra_protos += custom_target(proto[0] + '-client-protocol.h',
     input: files(proto[1]), output: proto[0] + '-client-protocol.h',
@@ -87,12 +90,14 @@ srcs = [
   'src/core/registry.c',
   'src/core/surface_mgr.c',
   'src/util/log.c',
+  'src/util/weather.c',
   'src/config/config.c',
   'src/config/parser.c',
   'src/config/watcher.c',
   'src/bar/bar.c',
   'src/bar/workspaces.c',
   'src/bar/sysinfo.c',
+  'src/bar/backends.c',
   'src/core/seat.c',
   'src/core/panel.c',
   'src/compositors/niri_ipc.c',
@@ -104,12 +109,16 @@ srcs = [
   'src/dock/dock.c',
   'src/control/control_center.c',
   'src/control/calendar_panel.c',
+  'src/control/network_panel.c',
+  'src/control/bluetooth_panel.c',
   'src/osd/osd.c',
   'src/notify/notification.c',
   'src/notify/notify_daemon.c',
+  'src/media/mpris.c',
   'src/notify/toast.c',
   'src/session/lock_screen.c',
   'src/session/session_actions.c',
+  'src/session/idle.c',
   'src/wallpaper/wallpaper.c',
   'src/hotkeys/hotkeys.c',
   'src/ipc/ipc.c',
@@ -117,8 +126,10 @@ srcs = [
   'src/clipboard/clipboard.c',
   'src/render/renderer.c',
   'src/plugins/plugin.c',
-  'src/widgets/desktop_widget.c',
+  'src/widgets/desktop_widgets.c',
+  'src/switcher/switcher.c',
   'src/third_party/tomlc99/toml.c',
+  'src/third_party/stb/stb_image.c',
   layer_c, layer_h,
   xdg_c, xdg_h,
   extra_protos,
@@ -135,6 +146,20 @@ executable('emancipation-shell',
     dependency('cairo', required: true),
     dependency('pangocairo', required: true),
     dependency('xkbcommon', required: true),
+    meson.get_compiler('c').find_library('m', required: true),
+    meson.get_compiler('c').find_library('dl', required: false),
   ],
-  install: false
+  install: true,
+  install_dir: get_option('bindir')
 )
+
+# Default system configuration (used when the user has no config of their own).
+install_data('config/config.toml',
+  install_dir: join_paths(get_option('sysconfdir'), 'emancipation-shell')
+)
+
+# Default wallpaper directory. Drop images here and the shell picks them up.
+install_data('data/wallpapers/README.txt',
+  install_dir: join_paths(get_option('datadir'), 'wallpapers')
+)
+

@@ -31,6 +31,8 @@ struct seat_state {
     struct xkb_state *xkb_state;
     seat_key_fn key_fn;
     void *key_userdata;
+    seat_text_fn text_fn;
+    void *text_userdata;
 };
 
 static void set_shape(struct seat_state *s, uint32_t shape)
@@ -192,7 +194,7 @@ static void k_enter(void *data, struct wl_keyboard *kb, uint32_t serial, struct 
     if (s->xkb_state && keys->size) {
         uint32_t *k = keys->data;
         size_t n = keys->size / sizeof(uint32_t);
-        for (size_t i = 0; i < n; i++) xkb_state_update_key(s->xkb_state, k[i] + 8, WL_KEYBOARD_KEY_STATE_PRESSED);
+        for (size_t i = 0; i < n; i++) xkb_state_update_key(s->xkb_state, k[i] + 8, XKB_KEY_DOWN);
     }
     log_debug("keyboard focus gained");
 }
@@ -218,6 +220,13 @@ static void k_key(void *data, struct wl_keyboard *kb, uint32_t serial, uint32_t 
     if (xkb_state_mod_name_is_active(s->xkb_state, XKB_MOD_NAME_CTRL, XKB_STATE_MODS_EFFECTIVE)) mods |= 1;
     if (xkb_state_mod_name_is_active(s->xkb_state, XKB_MOD_NAME_SHIFT, XKB_STATE_MODS_EFFECTIVE)) mods |= 2;
     if (xkb_state_mod_name_is_active(s->xkb_state, XKB_MOD_NAME_ALT, XKB_STATE_MODS_EFFECTIVE)) mods |= 4;
+    if (s->text_fn) {
+        char buf[64];
+        int n = xkb_state_key_get_utf8(s->xkb_state, key + 8, buf, sizeof(buf));
+        if (n < 0) n = 0;
+        buf[n < (int)sizeof(buf) ? n : (int)sizeof(buf) - 1] = '\0';
+        if (s->text_fn(buf, (uint32_t)sym, mods, s->text_userdata)) return;
+    }
     if (s->key_fn) s->key_fn((uint32_t)sym, mods, s->key_userdata);
 }
 
@@ -292,6 +301,18 @@ void seat_set_key_handler(struct seat_state *s, seat_key_fn fn, void *userdata)
     if (!s) return;
     s->key_fn = fn;
     s->key_userdata = userdata;
+}
+
+void seat_set_text_handler(struct seat_state *s, seat_text_fn fn, void *userdata)
+{
+    if (!s) return;
+    s->text_fn = fn;
+    s->text_userdata = userdata;
+}
+
+struct wl_seat *seat_wl_seat(struct seat_state *s)
+{
+    return s ? s->seat : NULL;
 }
 
 void seat_attach(struct seat_state *s, struct wl_seat *wl_seat)

@@ -5,8 +5,10 @@
 #include "launcher/launcher.h"
 #include "util/log.h"
 
+#include <ctype.h>
 #include <pango/pangocairo.h>
 #include <xkbcommon/xkbcommon-keysyms.h>
+#include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 
@@ -23,7 +25,7 @@ struct launcher_panel {
     struct output *fallback_out; /* output used before the panel has a surface */
     const struct config *cfg;
     char query[128];
-    int results[LP_MAX_RESULTS];
+    struct launcher_result results[LP_MAX_RESULTS];
     int count;
     int selected;
     /* geometry of the row list, kept for pointer hit testing */
@@ -35,16 +37,15 @@ struct launcher_panel {
 static void lp_refresh(struct launcher_panel *lp)
 {
     launcher_set_query(lp->launcher, lp->query);
-    launcher_get_results(lp->launcher, lp->results, &lp->count, LP_MAX_RESULTS);
+    launcher_get_results_list(lp->launcher, lp->results, &lp->count, LP_MAX_RESULTS);
     if (lp->count > LP_MAX_RESULTS) lp->count = LP_MAX_RESULTS;
     lp->selected = 0;
 }
 
 static void lp_activate(struct launcher_panel *lp, int idx)
 {
-    const char *name = launcher_get_name(lp->launcher, idx);
-    log_info("launcher activate: %s", name ? name : "?");
-    launcher_exec_from_idx(lp->launcher, idx);
+    log_info("launcher activate: %s", lp->results[idx].name);
+    launcher_activate_result(lp->launcher, &lp->results[idx]);
     launcher_panel_hide(lp);
 }
 
@@ -110,9 +111,9 @@ static void lp_draw(struct panel *p, cairo_t *cr, int w, int h)
     for (int i = 0; i < lp->count; i++) {
         double ry = lp->row_y0 + i * LP_ROW_H;
         if (ry + LP_ROW_H > h - LP_PAD) break;
-        int idx = lp->results[i];
-        const char *name = launcher_get_name(lp->launcher, idx);
-        if (!name) continue;
+        const struct launcher_result *r = &lp->results[i];
+        const char *name = r->name;
+        if (!name[0]) continue;
         if (i == lp->selected) {
             cairo_set_source_rgba(cr, th->primary.r, th->primary.g, th->primary.b, 0.22);
             round_rect(cr, lp->row_x0, ry, lp->row_w, LP_ROW_H - 4.0, 6.0);
@@ -121,10 +122,35 @@ static void lp_draw(struct panel *p, cairo_t *cr, int w, int h)
         double icon_px = 20.0;
         double row_h = LP_ROW_H - 4.0;
         double text_x = lp->row_x0 + 12.0;
-        cairo_surface_t *icon = launcher_icon_for(lp->launcher, idx, (int)icon_px);
-        if (icon) {
-            cairo_set_source_surface(cr, icon, text_x, ry + (row_h - icon_px) / 2.0);
-            cairo_paint(cr);
+        double icon_y = ry + (row_h - icon_px) / 2.0;
+        if (r->type == LR_APP) {
+            cairo_surface_t *icon = launcher_icon_for(lp->launcher, i, (int)icon_px);
+            if (icon) {
+                cairo_set_source_surface(cr, icon, text_x, icon_y);
+                cairo_paint(cr);
+            } else {
+                /* no raster icon: tidy initial-letter badge instead of
+                 * dumping the raw icon name (e.g. "calamares") as text */
+                cairo_set_source_rgba(cr, th->surface_variant.r, th->surface_variant.g,
+                                      th->surface_variant.b, 0.55);
+                round_rect(cr, text_x, icon_y, icon_px, icon_px, 6.0);
+                cairo_fill(cr);
+                char init[2] = { (char)toupper((unsigned char)name[0]), '\0' };
+                pango_layout_set_text(lp->small, init, -1);
+                int iw, ih;
+                pango_layout_get_pixel_size(lp->small, &iw, &ih);
+                cairo_set_source_rgba(cr, th->foreground.r, th->foreground.g,
+                                      th->foreground.b, 0.9);
+                cairo_move_to(cr, text_x + (icon_px - iw) / 2.0, icon_y + (icon_px - ih) / 2.0);
+                pango_cairo_show_layout(cr, lp->small);
+            }
+            text_x += icon_px + 12.0;
+        } else if (r->icon[0]) {
+            /* provider glyph (emoji, calculator '=', run command '>') */
+            pango_layout_set_text(lp->layout, r->icon, -1);
+            cairo_set_source_rgba(cr, th->foreground.r, th->foreground.g, th->foreground.b, 0.95);
+            cairo_move_to(cr, text_x, ry + (row_h - 16.0) / 2.0);
+            pango_cairo_show_layout(cr, lp->layout);
             text_x += icon_px + 12.0;
         }
         cairo_set_source_rgba(cr, th->foreground.r, th->foreground.g, th->foreground.b,
@@ -132,6 +158,14 @@ static void lp_draw(struct panel *p, cairo_t *cr, int w, int h)
         pango_layout_set_text(lp->layout, name, -1);
         cairo_move_to(cr, text_x, ry + (row_h - 16.0) / 2.0);
         pango_cairo_show_layout(cr, lp->layout);
+        if (r->desc[0]) {
+            int tw2, th2;
+            pango_layout_get_pixel_size(lp->layout, &tw2, &th2);
+            cairo_set_source_rgba(cr, th->foreground.r, th->foreground.g, th->foreground.b, 0.55);
+            pango_layout_set_text(lp->small, r->desc, -1);
+            cairo_move_to(cr, text_x + tw2 + 12.0, ry + (row_h - 14.0) / 2.0);
+            pango_cairo_show_layout(cr, lp->small);
+        }
     }
 
     if (lp->count == 0) {
@@ -153,7 +187,7 @@ static bool lp_key(struct panel *p, uint32_t keysym, uint32_t modifiers)
             return true;
         case 0xff8d: /* Return */
             if (lp->count > 0 && lp->selected >= 0 && lp->selected < lp->count)
-                lp_activate(lp, lp->results[lp->selected]);
+                lp_activate(lp, lp->selected);
             return true;
         case 0xff8a: /* Up */
             if (lp->count > 0) lp->selected = (lp->selected - 1 + lp->count) % lp->count;
@@ -200,7 +234,7 @@ static bool lp_click(struct panel *p, double x, double y)
     if (y < lp->row_y0) return false;
     int row = (int)((y - lp->row_y0) / LP_ROW_H);
     if (row < 0 || row >= lp->count) return false;
-    lp_activate(lp, lp->results[row]);
+    lp_activate(lp, row);
     return true;
 }
 
@@ -255,6 +289,31 @@ void launcher_panel_hide(struct launcher_panel *lp)
 {
     if (!lp) return;
     panel_hide(&lp->panel);
+}
+
+void launcher_panel_show_query(struct launcher_panel *lp, struct output *out, const char *q)
+{
+    if (!lp) return;
+    if (!out) out = lp->fallback_out;
+    if (!panel_is_visible(&lp->panel)) {
+        lp->query[0] = '\0';
+        lp_refresh(lp);
+        if (!panel_show(&lp->panel, out, LP_W, LP_H)) {
+            log_warn("launcher panel: show failed");
+            return;
+        }
+    }
+    snprintf(lp->query, sizeof(lp->query), "%s", q ? q : "");
+    lp_refresh(lp);
+    lp->selected = 0;
+    panel_mark_dirty(&lp->panel);
+}
+
+void launcher_panel_activate_index(struct launcher_panel *lp, int idx)
+{
+    if (!lp) return;
+    if (idx < 0 || idx >= lp->count) return;
+    lp_activate(lp, idx);
 }
 
 void launcher_panel_toggle(struct launcher_panel *lp, struct output *out)

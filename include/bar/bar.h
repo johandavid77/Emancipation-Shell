@@ -8,6 +8,7 @@
 struct config;
 struct workspace_manager;
 struct sysinfo_state;
+struct backends_state;
 struct launcher;
 struct niri_ipc;
 struct systray;
@@ -22,6 +23,8 @@ enum bar_hit_kind {
     BAR_HIT_KBD,
     BAR_HIT_LAUNCHER_ITEM,
     BAR_HIT_TASKBAR,
+    BAR_HIT_CONTROL_CENTER,
+    BAR_HIT_NETWORK,
 };
 
 /* Clickable horizontal span, in logical coordinates. */
@@ -41,6 +44,7 @@ struct bar_ctx {
     struct niri_ipc *niri;    /* window list for the taskbar */
     struct workspace_manager *wm;
     const struct sysinfo_state *sys;
+    const struct backends_state *bk; /* volume/network/media/script state */
     struct systray *systray;  /* status notifier items for the tray */
     struct launcher *launcher;
     struct wl_output *output;

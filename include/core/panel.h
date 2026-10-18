@@ -23,6 +23,18 @@ typedef bool (*panel_key_fn)(struct panel *p, uint32_t keysym, uint32_t modifier
 typedef bool (*panel_click_fn)(struct panel *p, double x, double y);
 typedef void (*panel_motion_fn)(struct panel *p, double x, double y);
 
+enum panel_anchor {
+    PANEL_ANCHOR_CENTER = 0,
+    PANEL_ANCHOR_TOP_RIGHT,
+    PANEL_ANCHOR_BOTTOM_CENTER,
+    PANEL_ANCHOR_TOP_LEFT,
+};
+
+enum panel_layer {
+    PANEL_LAYER_TOP = 0,   /* overlay/panels (default) */
+    PANEL_LAYER_BOTTOM,    /* desktop widgets, above wallpaper, below windows */
+};
+
 struct panel {
     struct wayland_ctx *ctx;
     struct output *out;
@@ -34,10 +46,12 @@ struct panel {
     bool configured;
     bool dirty;
     bool visible;
+    bool persistent; /* never hidden by "click outside"; no keyboard focus */
     struct wl_list link;
 
     int logical_w, logical_h;
     double hover_x, hover_y; /* pointer position, logical */
+    enum panel_layer layer;
 
     panel_draw_fn draw;
     panel_key_fn key;
@@ -51,6 +65,11 @@ void panel_fini(struct panel *p);
 void panel_set_callbacks(struct panel *p, panel_draw_fn draw, panel_key_fn key, panel_click_fn click,
                          panel_motion_fn motion, void *userdata);
 bool panel_show(struct panel *p, struct output *out, int w, int h);
+bool panel_show_at(struct panel *p, struct output *out, int w, int h, enum panel_anchor anchor);
+/* Resize an already visible panel (the compositor acks with a new configure). */
+void panel_resize(struct panel *p, int w, int h);
+void panel_set_persistent(struct panel *p, bool persistent);
+void panel_set_layer(struct panel *p, enum panel_layer layer);
 void panel_hide(struct panel *p);
 bool panel_is_visible(const struct panel *p);
 void panel_mark_dirty(struct panel *p);

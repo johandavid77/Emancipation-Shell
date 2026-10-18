@@ -4,6 +4,7 @@
 #include <stdbool.h>
 
 struct desktop_entry {
+    char id[128];   /* basename incl. .desktop, e.g. "firefox.desktop" */
     char name[256];
     char generic_name[256];
     char exec[512];
@@ -26,5 +27,7 @@ bool desktop_db_add(struct desktop_db *db, const struct desktop_entry *e);
 bool desktop_db_load_from_dir(struct desktop_db *db, const char *dir);
 bool desktop_db_load_system(struct desktop_db *db);
 int desktop_db_search_fuzzy(const struct desktop_db *db, const char *query, int *results, int max_results);
+/* Index of the entry whose id matches `id` (with or without ".desktop"), or -1. */
+int desktop_db_find_by_id(const struct desktop_db *db, const char *id);
 
 #endif /* EMANCIPATION_DESKTOP_H */

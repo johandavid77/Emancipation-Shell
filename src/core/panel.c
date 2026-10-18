@@ -180,6 +180,11 @@ void panel_set_callbacks(struct panel *p, panel_draw_fn draw, panel_key_fn key, 
 
 bool panel_show(struct panel *p, struct output *out, int w, int h)
 {
+    return panel_show_at(p, out, w, h, PANEL_ANCHOR_CENTER);
+}
+
+bool panel_show_at(struct panel *p, struct output *out, int w, int h, enum panel_anchor anchor)
+{
     if (!p || !p->ctx || !p->ctx->layer_shell || !p->ctx->compositor || !p->ctx->shm) return false;
     if (p->visible) return true;
     if (!out) return false;
@@ -192,17 +197,51 @@ bool panel_show(struct panel *p, struct output *out, int w, int h)
     p->surf = wl_compositor_create_surface(p->ctx->compositor);
     if (!p->surf) return false;
     p->ls = zwlr_layer_shell_v1_get_layer_surface(p->ctx->layer_shell, p->surf, out->wl,
-                                                   ZWLR_LAYER_SHELL_V1_LAYER_TOP, "emancipation-panel");
+                                                   p->layer == PANEL_LAYER_BOTTOM
+                                                       ? ZWLR_LAYER_SHELL_V1_LAYER_BOTTOM
+                                                       : ZWLR_LAYER_SHELL_V1_LAYER_TOP,
+                                                   p->layer == PANEL_LAYER_BOTTOM
+                                                       ? "emancipation-desktop"
+                                                       : "emancipation-panel");
     zwlr_layer_surface_v1_add_listener(p->ls, &panel_ls_listener, p);
-    zwlr_layer_surface_v1_set_anchor(p->ls, ZWLR_LAYER_SURFACE_V1_ANCHOR_TOP |
-                                            ZWLR_LAYER_SURFACE_V1_ANCHOR_LEFT);
     zwlr_layer_surface_v1_set_exclusive_zone(p->ls, 0); /* overlay: reserve nothing */
-    zwlr_layer_surface_v1_set_keyboard_interactivity(p->ls, ZWLR_LAYER_SURFACE_V1_KEYBOARD_INTERACTIVITY_EXCLUSIVE);
+    zwlr_layer_surface_v1_set_keyboard_interactivity(
+        p->ls, p->persistent ? ZWLR_LAYER_SURFACE_V1_KEYBOARD_INTERACTIVITY_NONE
+                             : ZWLR_LAYER_SURFACE_V1_KEYBOARD_INTERACTIVITY_EXCLUSIVE);
     zwlr_layer_surface_v1_set_size(p->ls, (uint32_t)w, (uint32_t)h);
-    /* center on the output */
-    int px = out->w > w ? (out->w - w) / 2 : 0;
-    int py = out->h > h ? (out->h - h) / 2 : 0;
-    {
+
+    int px, py;
+    if (anchor == PANEL_ANCHOR_TOP_RIGHT) {
+        zwlr_layer_surface_v1_set_anchor(p->ls, ZWLR_LAYER_SURFACE_V1_ANCHOR_TOP |
+                                                ZWLR_LAYER_SURFACE_V1_ANCHOR_RIGHT);
+        int mtop = 8, mright = 12;
+        zwlr_layer_surface_v1_set_margin(p->ls, mtop, mright, 0, 0);
+        px = out->w > w ? out->w - w - mright : 0;
+        py = mtop;
+    } else if (anchor == PANEL_ANCHOR_BOTTOM_CENTER) {
+        zwlr_layer_surface_v1_set_anchor(p->ls, ZWLR_LAYER_SURFACE_V1_ANCHOR_BOTTOM |
+                                                ZWLR_LAYER_SURFACE_V1_ANCHOR_LEFT);
+        int mbot = 6;
+        px = out->w > w ? (out->w - w) / 2 : 0;
+        py = out->h > h ? out->h - h - mbot : 0;
+        int opx = out->x + px;
+        int opy = out->y + py;
+        zwlr_layer_surface_v1_set_margin(p->ls, 0, 0, mbot, opx);
+        py = opy;
+    } else if (anchor == PANEL_ANCHOR_TOP_LEFT) {
+        zwlr_layer_surface_v1_set_anchor(p->ls, ZWLR_LAYER_SURFACE_V1_ANCHOR_TOP |
+                                                ZWLR_LAYER_SURFACE_V1_ANCHOR_LEFT);
+        int mtop = 24, mleft = 24;
+        zwlr_layer_surface_v1_set_margin(p->ls, mtop, 0, 0, mleft);
+        px = mleft;
+        py = mtop;
+    } else {
+        zwlr_layer_surface_v1_set_anchor(p->ls, ZWLR_LAYER_SURFACE_V1_ANCHOR_TOP |
+                                                ZWLR_LAYER_SURFACE_V1_ANCHOR_LEFT);
+        zwlr_layer_surface_v1_set_exclusive_zone(p->ls, 0); /* overlay: reserve nothing */
+        /* center on the output */
+        px = out->w > w ? (out->w - w) / 2 : 0;
+        py = out->h > h ? (out->h - h) / 2 : 0;
         int opx = out->x + px;
         int opy = out->y + py;
         zwlr_layer_surface_v1_set_margin(p->ls, opy, 0, 0, opx);
@@ -212,6 +251,29 @@ bool panel_show(struct panel *p, struct output *out, int w, int h)
     wl_surface_commit(p->surf); /* initial commit without buffer -> configure */
     log_info("panel shown: %dx%d at %d,%d on output %u", w, h, px, py, out->global_name);
     return true;
+}
+
+void panel_set_persistent(struct panel *p, bool persistent)
+{
+    if (p) p->persistent = persistent;
+}
+
+void panel_resize(struct panel *p, int w, int h)
+{
+    if (!p || !p->visible || !p->ls || w <= 0 || h <= 0) return;
+    if (p->logical_w == w && p->logical_h == h) return;
+    p->logical_w = w;
+    p->logical_h = h;
+    p->w = w;
+    p->h = h;
+    zwlr_layer_surface_v1_set_size(p->ls, (uint32_t)w, (uint32_t)h);
+    p->dirty = true;
+    wl_surface_commit(p->surf); /* ask the compositor for a new configure */
+}
+
+void panel_set_layer(struct panel *p, enum panel_layer layer)
+{
+    if (p) p->layer = layer;
 }
 
 void panel_hide(struct panel *p)

@@ -121,6 +121,7 @@ static void layer_draw(struct layer_surface *l)
         .cfg = l->mgr->cfg,
         .wm = l->mgr->wm,
         .sys = l->mgr->sys,
+        .bk = l->mgr->backends,
         .niri = l->mgr->niri,
         .systray = l->mgr->systray,
         .launcher = l->mgr->launcher,
@@ -302,6 +303,11 @@ void surface_mgr_set_sysinfo(struct surface_mgr *mgr, const struct sysinfo_state
     if (mgr) mgr->sys = sys;
 }
 
+void surface_mgr_set_backends(struct surface_mgr *mgr, const struct backends_state *bk)
+{
+    if (mgr) mgr->backends = bk;
+}
+
 void surface_mgr_set_systray(struct surface_mgr *mgr, struct systray *st)
 {
     if (mgr) mgr->systray = st;
@@ -366,10 +372,11 @@ void surface_mgr_pointer_click(struct surface_mgr *mgr, struct wl_surface *surf,
         if (pn->click) pn->click(pn, x, y);
         return;
     }
-    /* Click outside any panel: close all panels */
+    /* Click outside any panel: close all (non-persistent) panels */
     if (mgr->n_panels > 0) {
         for (int i = 0; i < mgr->n_panels; i++) {
-            if (mgr->panels[i] && panel_is_visible(mgr->panels[i])) {
+            struct panel *p = mgr->panels[i];
+            if (p && !p->persistent && panel_is_visible(p)) {
                 surface_mgr_hide_all_panels(mgr);
                 return;
             }
@@ -388,11 +395,23 @@ void surface_mgr_pointer_click(struct surface_mgr *mgr, struct wl_surface *surf,
             mgr->on_calendar(mgr->on_calendar_userdata);
             log_info("calendar toggled");
         }
+        if (hit->kind == BAR_HIT_CONTROL_CENTER && mgr->on_control_center) {
+            mgr->on_control_center(mgr->on_control_center_userdata);
+            log_info("control center toggled");
+        }
+        if (hit->kind == BAR_HIT_NETWORK && mgr->on_network) {
+            mgr->on_network(mgr->on_network_userdata);
+            log_info("network popup toggled");
+        }
         if (hit->kind == BAR_HIT_TASKBAR && mgr->niri) {
             const struct niri_window *w = niri_ipc_window(mgr->niri, (int)(intptr_t)hit->ref);
             if (w) {
-                if (w->focused) niri_ipc_close(mgr->niri, w->id);
-                else niri_ipc_focus(mgr->niri, w->id);
+                if (!w->focused) {
+                    niri_ipc_focus(mgr->niri, w->id);
+                } else {
+                    /* focused window: toggle maximize/restore, never close */
+                    niri_ipc_action(mgr->niri, "MaximizeColumn");
+                }
             }
             log_info("taskbar clicked");
         }
@@ -417,6 +436,9 @@ void surface_mgr_mark_dirty_all(struct surface_mgr *mgr)
     wl_list_for_each(l, &mgr->layers, link) {
         l->dirty = true;
         layer_draw(l);
+    }
+    for (int i = 0; i < mgr->n_panels; i++) {
+        if (mgr->panels[i]) panel_mark_dirty(mgr->panels[i]);
     }
 }
 void surface_mgr_set_niri(struct surface_mgr *mgr, struct niri_ipc *n)
@@ -469,7 +491,15 @@ void surface_mgr_set_launcher_toggle(struct surface_mgr *mgr, surface_mgr_launch
 void surface_mgr_set_control_center_toggle(struct surface_mgr *mgr, surface_mgr_launcher_fn fn, void *userdata)
 {
     if (!mgr) return;
-    (void)fn; (void)userdata;
+    mgr->on_control_center = fn;
+    mgr->on_control_center_userdata = userdata;
+}
+
+void surface_mgr_set_network_toggle(struct surface_mgr *mgr, surface_mgr_launcher_fn fn, void *userdata)
+{
+    if (!mgr) return;
+    mgr->on_network = fn;
+    mgr->on_network_userdata = userdata;
 }
 
 
@@ -478,7 +508,7 @@ void surface_mgr_hide_all_panels(struct surface_mgr *mgr)
     if (!mgr) return;
     for (int i = 0; i < mgr->n_panels; i++) {
         struct panel *p = mgr->panels[i];
-        if (p && panel_is_visible(p)) {
+        if (p && !p->persistent && panel_is_visible(p)) {
             panel_hide(p);
         }
     }

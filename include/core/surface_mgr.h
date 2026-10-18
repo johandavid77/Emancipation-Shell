@@ -12,6 +12,7 @@ struct output;
 struct config;
 struct workspace_manager;
 struct sysinfo_state;
+struct backends_state;
 struct panel;
 struct niri_ipc;
 
@@ -50,16 +51,21 @@ struct surface_mgr {
     const struct config *cfg;
     struct workspace_manager *wm;
     const struct sysinfo_state *sys;
+    const struct backends_state *backends;
     struct launcher *launcher;
     struct niri_ipc *niri;
     struct systray *systray;
-#define SURFACE_MGR_MAX_PANELS 4
+#define SURFACE_MGR_MAX_PANELS 16
     struct panel *panels[SURFACE_MGR_MAX_PANELS]; /* overlay panels, routed first for input */
     int n_panels;
     surface_mgr_launcher_fn on_launcher;
     void *on_launcher_userdata;
     surface_mgr_launcher_fn on_calendar;
     void *on_calendar_userdata;
+    surface_mgr_launcher_fn on_control_center;
+    void *on_control_center_userdata;
+    surface_mgr_launcher_fn on_network;
+    void *on_network_userdata;
     struct output *focus_output;
     int bar_height;
     bool shutdown;
@@ -74,6 +80,7 @@ void surface_mgr_mark_dirty_all(struct surface_mgr *mgr);
 void surface_mgr_on_output_added(struct surface_mgr *mgr, struct output *out);
 void surface_mgr_on_output_removed(struct surface_mgr *mgr, struct output *out);
 void surface_mgr_set_sysinfo(struct surface_mgr *mgr, const struct sysinfo_state *sys);
+void surface_mgr_set_backends(struct surface_mgr *mgr, const struct backends_state *bk);
 void surface_mgr_set_launcher(struct surface_mgr *mgr, struct launcher *launcher);
 void surface_mgr_set_launcher_toggle(struct surface_mgr *mgr, surface_mgr_launcher_fn fn, void *userdata);
 /* Registers an overlay panel; input is routed to it before the bar. */
@@ -81,6 +88,7 @@ void surface_mgr_add_panel(struct surface_mgr *mgr, struct panel *p);
 void surface_mgr_set_niri(struct surface_mgr *mgr, struct niri_ipc *n);
 void surface_mgr_set_systray(struct surface_mgr *mgr, struct systray *st);void surface_mgr_set_calendar_toggle(struct surface_mgr *mgr, surface_mgr_launcher_fn fn, void *userdata);
 void surface_mgr_set_control_center_toggle(struct surface_mgr *mgr, surface_mgr_launcher_fn fn, void *userdata);
+void surface_mgr_set_network_toggle(struct surface_mgr *mgr, surface_mgr_launcher_fn fn, void *userdata);
 struct output *surface_mgr_first_output(struct surface_mgr *mgr);
 /* Routes a keysym to the visible panel (launcher or calendar). */
 bool surface_mgr_handle_key(struct surface_mgr *mgr, uint32_t keysym, uint32_t mods);

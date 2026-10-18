@@ -125,6 +125,8 @@ static bool load_desktop_file(const char *path, struct desktop_entry *e)
     FILE *f = fopen(path, "r");
     if (!f) return false;
     entry_clear(e);
+    const char *base = strrchr(path, '/');
+    snprintf(e->id, sizeof(e->id), "%s", base ? base + 1 : path);
     char line[1024];
     bool in_desktop = false;
     while (fgets(line, sizeof(line), f)) {
@@ -220,6 +222,29 @@ bool desktop_db_load_system(struct desktop_db *db)
     desktop_db_load_from_dir(db, "/var/lib/flatpak/exports/share/applications");
     desktop_db_load_from_dir(db, "/var/lib/snapd/desktop/applications");
     return true;
+}
+
+static bool id_matches(const char *entry_id, const char *want)
+{
+    if (strcmp(entry_id, want) == 0) return true;
+    /* accept the id with ".desktop" appended or omitted */
+    size_t el = strlen(entry_id), wl = strlen(want);
+    if (el > 8 && strcmp(entry_id + el - 8, ".desktop") == 0 && el - 8 == wl &&
+        strncmp(entry_id, want, wl) == 0)
+        return true;
+    if (wl > 8 && strcmp(want + wl - 8, ".desktop") == 0 && wl - 8 == el &&
+        strncmp(entry_id, want, el) == 0)
+        return true;
+    return false;
+}
+
+int desktop_db_find_by_id(const struct desktop_db *db, const char *id)
+{
+    if (!db || !id || !*id) return -1;
+    for (int i = 0; i < db->count; i++) {
+        if (id_matches(db->entries[i].id, id)) return i;
+    }
+    return -1;
 }
 
 int desktop_db_search_fuzzy(const struct desktop_db *db, const char *query, int *results, int max_results)

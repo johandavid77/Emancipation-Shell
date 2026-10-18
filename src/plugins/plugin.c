@@ -1,51 +1,63 @@
 #include "plugins/plugin.h"
-#include "util/log.h"
 #include <stdlib.h>
-#include <string.h>
 
-void plugin_mgr_init(struct plugin_manager *pm)
+#define PLUGIN_MAX 32
+
+struct plugin_entry {
+    struct plugin *p;
+    bool inited;
+};
+
+struct plugin_registry {
+    struct plugin_entry entries[PLUGIN_MAX];
+    int n;
+};
+
+void plugin_registry_init(struct plugin_registry **reg)
 {
-    if (!pm) return;
-    pm->plugins = NULL;
-    pm->count = 0;
-    pm->capacity = 0;
+    if (!reg) return;
+    *reg = calloc(1, sizeof(struct plugin_registry));
 }
 
-void plugin_mgr_free(struct plugin_manager *pm)
+void plugin_registry_fini(struct plugin_registry **reg)
 {
-    if (!pm) return;
-    free(pm->plugins);
-    pm->plugins = NULL;
-    pm->count = pm->capacity = 0;
+    if (!reg || !*reg) return;
+    free(*reg);
+    *reg = NULL;
 }
 
-bool plugin_mgr_load(struct plugin_manager *pm, const char *name)
+bool plugin_register(struct plugin_registry *reg, struct plugin *p)
 {
-    if (!pm || !name) return false;
-    if (pm->count >= pm->capacity) {
-        int nc = pm->capacity == 0 ? 8 : pm->capacity * 2;
-        struct plugin *np = realloc(pm->plugins, nc * sizeof(*np));
-        if (!np) return false;
-        pm->plugins = np;
-        pm->capacity = nc;
-    }
-    strncpy(pm->plugins[pm->count].name, name, sizeof(pm->plugins[pm->count].name)-1);
-    pm->plugins[pm->count].name[sizeof(pm->plugins[pm->count].name)-1] = '\0';
-    pm->plugins[pm->count].loaded = true;
-    pm->count++;
-    log_info("plugin loaded: %s", name);
+    if (!reg || !p) return false;
+    if (reg->n >= PLUGIN_MAX) return false;
+    reg->entries[reg->n].p = p;
+    reg->entries[reg->n].inited = false;
+    reg->n++;
     return true;
 }
 
-bool plugin_mgr_unload(struct plugin_manager *pm, const char *name)
+int plugin_init_all(struct plugin_registry *reg, void *ctx)
 {
-    if (!pm || !name) return false;
-    for (int i = 0; i < pm->count; i++) {
-        if (strcmp(pm->plugins[i].name, name) == 0 && pm->plugins[i].loaded) {
-            pm->plugins[i].loaded = false;
-            log_info("plugin unloaded: %s", name);
-            return true;
+    if (!reg) return 0;
+    int ok = 0;
+    for (int i = 0; i < reg->n; i++) {
+        if (!reg->entries[i].inited && reg->entries[i].p->init) {
+            if (reg->entries[i].p->init(ctx) == 0) {
+                reg->entries[i].inited = true;
+                ok++;
+            }
         }
     }
-    return false;
+    return ok;
+}
+
+void plugin_fini_all(struct plugin_registry *reg)
+{
+    if (!reg) return;
+    for (int i = reg->n - 1; i >= 0; i--) {
+        if (reg->entries[i].inited && reg->entries[i].p->fini) {
+            reg->entries[i].p->fini();
+            reg->entries[i].inited = false;
+        }
+    }
 }

@@ -46,3 +46,15 @@ int notify_store_unread_count(const struct notification_store *s)
     }
     return c;
 }
+
+void notify_store_clear(struct notification_store *s)
+{
+    if (!s) return;
+    s->count = 0;
+}
+
+void notify_store_mark_read(struct notification_store *s, int index)
+{
+    if (!s || index < 0 || index >= s->count) return;
+    s->items[index].read = 1;
+}
