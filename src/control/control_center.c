@@ -30,7 +30,7 @@
  * buttons and a weather card. */
 
 #define CC_W 380
-#define CC_H 700
+#define CC_H 736
 #define CC_PAD 16.0
 #define CC_TITLE_H 26.0
 #define CC_TAB_H 34.0
@@ -749,7 +749,9 @@ static void cc_draw_home(cairo_t *cr, struct control_center *cc, const struct th
 
     if (cc->w_ok) {
         double wx = g.wth_x, wy = g.wth_y, ww = g.wth_w, wh = g.wth_h;
-        double pad = 14.0;
+        double pad = 12.0;
+        double right = wx + ww - pad;
+        double bottom = wy + wh - pad;
 
         rounded_rect(cr, wx, wy, ww, wh, 14);
         cairo_set_source_rgba(cr, th->primary.r, th->primary.g, th->primary.b, 0.14);
@@ -769,35 +771,74 @@ static void cc_draw_home(cairo_t *cr, struct control_center *cc, const struct th
         draw_text(cr, cc->l_title, cc->w_icon, cx - iw / 2, cy - ih / 2);
 
         double tx = wx + pad + d + 14;
-        set_layout_font(cc->l_title, family, fsize + 9, PANGO_WEIGHT_SEMIBOLD);
-        cairo_set_source_rgba(cr, th->foreground.r, th->foreground.g, th->foreground.b, 1.0);
-        double tw2 = 0, thh = 0;
-        text_size(cc->l_title, cc->w_temp, &tw2, &thh);
-        draw_text(cr, cc->l_title, cc->w_temp, tx, wy + pad - 2);
-        cairo_set_source_rgba(cr, th->on_surface_variant.r, th->on_surface_variant.g,
-                              th->on_surface_variant.b, 0.85);
-        set_layout_font(cc->l_small, family, fsize, PANGO_WEIGHT_NORMAL);
-        draw_text(cr, cc->l_small, cc->w_cond, tx, wy + pad - 2 + thh + 2);
+        double tw2 = 0, thh = 0, ch = 0, mh = 0, lw2 = 0, lh = 0, ew = 0, eh = 0;
+        char moonline[64] = {0};
 
+        set_layout_font(cc->l_title, family, fsize + 9, PANGO_WEIGHT_SEMIBOLD);
+        text_size(cc->l_title, cc->w_temp, &tw2, &thh);
+        set_layout_font(cc->l_small, family, fsize, PANGO_WEIGHT_NORMAL);
+        text_size(cc->l_small, cc->w_cond, NULL, &ch);
+        set_layout_font(cc->l_body, family, fsize, PANGO_WEIGHT_MEDIUM);
+        lw2 = text_w(cc->l_body, cc->w_loc);
+        text_size(cc->l_body, cc->w_loc, NULL, &lh);
         if (cc->w_moon[0]) {
-            char moonline[64];
-            snprintf(moonline, sizeof(moonline), "%s %s", cc_moon_icon(cc->w_moon_phase), cc->w_moon);
+            snprintf(moonline, sizeof(moonline), "%s %s", cc_moon_icon(cc->w_moon_phase),
+                     cc->w_moon);
             set_layout_font(cc->l_small, family, fsize - 1, PANGO_WEIGHT_NORMAL);
-            cairo_set_source_rgba(cr, th->on_surface_variant.r, th->on_surface_variant.g,
-                                  th->on_surface_variant.b, 0.85);
-            draw_text(cr, cc->l_small, moonline, tx, wy + wh - pad - fsize);
+            text_size(cc->l_small, moonline, NULL, &mh);
+        }
+        if (cc->w_extra[0]) {
+            set_layout_font(cc->l_small, family, fsize - 1, PANGO_WEIGHT_NORMAL);
+            ew = text_w(cc->l_small, cc->w_extra);
+            text_size(cc->l_small, cc->w_extra, NULL, &eh);
         }
 
-        set_layout_font(cc->l_body, family, fsize, PANGO_WEIGHT_MEDIUM);
-        cairo_set_source_rgba(cr, th->foreground.r, th->foreground.g, th->foreground.b, 0.9);
-        double lw2 = text_w(cc->l_body, cc->w_loc);
-        draw_text(cr, cc->l_body, cc->w_loc, wx + ww - pad - lw2, wy + pad - 2);
-        if (cc->w_extra[0]) {
+        /* Row 1: temp (left) + location (right, only if it fits). */
+        double y1 = wy + pad - 2;
+        set_layout_font(cc->l_title, family, fsize + 9, PANGO_WEIGHT_SEMIBOLD);
+        cairo_set_source_rgba(cr, th->foreground.r, th->foreground.g, th->foreground.b, 1.0);
+        draw_text(cr, cc->l_title, cc->w_temp, tx, y1);
+        bool loc_fits = (tx + tw2 + 10 + lw2) <= right;
+        if (loc_fits) {
+            set_layout_font(cc->l_body, family, fsize, PANGO_WEIGHT_MEDIUM);
+            cairo_set_source_rgba(cr, th->foreground.r, th->foreground.g, th->foreground.b, 0.9);
+            draw_text(cr, cc->l_body, cc->w_loc, right - lw2, y1 + (thh - lh) / 2);
+        }
+
+        /* Row 2: condition (left) + extra (right, only if it fits). */
+        double y2 = y1 + thh + 2;
+        set_layout_font(cc->l_small, family, fsize, PANGO_WEIGHT_NORMAL);
+        cairo_set_source_rgba(cr, th->on_surface_variant.r, th->on_surface_variant.g,
+                              th->on_surface_variant.b, 0.85);
+        draw_text(cr, cc->l_small, cc->w_cond, tx, y2);
+        bool extra_fits = (tx + text_w(cc->l_small, cc->w_cond) + 10 + ew) <= right;
+        if (cc->w_extra[0] && extra_fits && (y2 + eh) <= bottom) {
             set_layout_font(cc->l_small, family, fsize - 1, PANGO_WEIGHT_NORMAL);
             cairo_set_source_rgba(cr, th->on_surface_variant.r, th->on_surface_variant.g,
                                   th->on_surface_variant.b, 0.75);
-            double ew = text_w(cc->l_small, cc->w_extra);
-            draw_text(cr, cc->l_small, cc->w_extra, wx + ww - pad - ew, wy + wh - pad - fsize);
+            draw_text(cr, cc->l_small, cc->w_extra, right - ew, y2 + (ch - eh) / 2);
+        }
+
+        /* Row 3: moon line (bottom-left), only if it clears row 2. */
+        if (cc->w_moon[0] && (y2 + ch + 4 + mh) <= bottom) {
+            set_layout_font(cc->l_small, family, fsize - 1, PANGO_WEIGHT_NORMAL);
+            cairo_set_source_rgba(cr, th->on_surface_variant.r, th->on_surface_variant.g,
+                                  th->on_surface_variant.b, 0.85);
+            draw_text(cr, cc->l_small, moonline, tx, bottom - mh);
+        } else if (cc->w_extra[0] && !extra_fits && (y2 + ch + 4 + eh) <= bottom) {
+            /* extra didn't fit on row 2: put it on the bottom line instead. */
+            set_layout_font(cc->l_small, family, fsize - 1, PANGO_WEIGHT_NORMAL);
+            cairo_set_source_rgba(cr, th->on_surface_variant.r, th->on_surface_variant.g,
+                                  th->on_surface_variant.b, 0.75);
+            draw_text(cr, cc->l_small, cc->w_extra, right - ew, bottom - eh);
+        }
+
+        /* If location didn't fit on row 1 and row 3 is free, put it bottom-left. */
+        if (!loc_fits && !cc->w_moon[0] &&
+            (y2 + ch + 4 + lh) <= bottom) {
+            set_layout_font(cc->l_body, family, fsize, PANGO_WEIGHT_MEDIUM);
+            cairo_set_source_rgba(cr, th->foreground.r, th->foreground.g, th->foreground.b, 0.9);
+            draw_text(cr, cc->l_body, cc->w_loc, tx, bottom - lh);
         }
     }
 }
